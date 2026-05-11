@@ -1,0 +1,13 @@
+# Store all text files with LF line endings in the repo, regardless of OS.
+# Prevents CRLF/LF churn between Windows (your laptop) and Linux (Vercel).
+* text=auto eol=lf
+
+# Binary files: never touch line endings.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary

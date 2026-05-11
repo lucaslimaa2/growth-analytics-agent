@@ -1,0 +1,48 @@
+# --- Secrets ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# --- uv ---
+# (uv.lock IS committed; .venv is not)
+
+# --- Vercel ---
+.vercel/
+
+# --- Node (only present because Vercel CLI uses npm) ---
+node_modules/
+npm-debug.log*
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Editors / IDEs ---
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- Build / dist ---
+dist/
+build/
+
+# --- Logs / local data ---
+*.log
+*.sqlite
+*.sqlite3
