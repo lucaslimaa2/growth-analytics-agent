@@ -48,7 +48,7 @@ PLAN_INITIAL_WEIGHTS = {"Free": 0.55, "Starter": 0.22, "Pro": 0.18, "Business": 
 PRO_PRICE_HIKE_MONTH = 12
 PRO_PRICE_NEW = 119
 ACTIVATION_FEATURE_MONTH = 19
-ACTIVATION_RATE_PRE  = 0.35
+ACTIVATION_RATE_PRE = 0.35
 ACTIVATION_RATE_POST = 0.52
 REFERRAL_PROGRAM_MONTH = 16
 OUTAGE_MONTH = 22
@@ -61,21 +61,47 @@ PAID_SEARCH_CAC_PARTIAL_RECOVERY_MONTH = 10
 PAID_SEARCH_CAC_RECOVERED = 48.0
 
 COMPANY_MOMENTS = [
-    (CAC_SPIKE_MONTH,         1,  "paid_search_cac_spike",
-     "Paid-search CAC rose ~45% MoM due to bid inflation."),
-    (PRO_PRICE_HIKE_MONTH,    1,  "pro_plan_price_increase",
-     "Pro plan price raised from $99 to $119 (+20%)."),
-    (REFERRAL_PROGRAM_MONTH,  5,  "referral_program_launch",
-     "Public referral program launched (give $50, get $50)."),
-    (ACTIVATION_FEATURE_MONTH, 8, "activation_feature_ship",
-     "In-app onboarding revamp shipped; activation rose from ~35% to ~52%."),
-    (OUTAGE_MONTH, OUTAGE_DAY_OF_MONTH, "production_outage",
-     "Day-long production outage; downstream churn for several weeks."),
+    (
+        CAC_SPIKE_MONTH,
+        1,
+        "paid_search_cac_spike",
+        "Paid-search CAC rose ~45% MoM due to bid inflation.",
+    ),
+    (
+        PRO_PRICE_HIKE_MONTH,
+        1,
+        "pro_plan_price_increase",
+        "Pro plan price raised from $99 to $119 (+20%).",
+    ),
+    (
+        REFERRAL_PROGRAM_MONTH,
+        5,
+        "referral_program_launch",
+        "Public referral program launched (give $50, get $50).",
+    ),
+    (
+        ACTIVATION_FEATURE_MONTH,
+        8,
+        "activation_feature_ship",
+        "In-app onboarding revamp shipped; activation rose from ~35% to ~52%.",
+    ),
+    (
+        OUTAGE_MONTH,
+        OUTAGE_DAY_OF_MONTH,
+        "production_outage",
+        "Day-long production outage; downstream churn for several weeks.",
+    ),
 ]
 
 EVENT_NAMES = [
-    "page_view", "feature_use", "report_export", "data_import",
-    "team_invite", "billing_view", "dashboard_load", "api_call",
+    "page_view",
+    "feature_use",
+    "report_export",
+    "data_import",
+    "team_invite",
+    "billing_view",
+    "dashboard_load",
+    "api_call",
 ]
 
 OUT = Path("data")
@@ -127,12 +153,17 @@ def next_plan_down(plan: str) -> str:
 # Raw table generators
 # ============================================================================
 
+
 def generate_company_profile() -> pd.DataFrame:
-    return pd.DataFrame([{
-        "founded": (START_DATE - timedelta(days=730)).isoformat(),
-        "industry": "B2B SaaS",
-        "product_type": "Customer analytics platform",
-    }])
+    return pd.DataFrame(
+        [
+            {
+                "founded": (START_DATE - timedelta(days=730)).isoformat(),
+                "industry": "B2B SaaS",
+                "product_type": "Customer analytics platform",
+            }
+        ]
+    )
 
 
 def generate_customers() -> pd.DataFrame:
@@ -159,7 +190,9 @@ def generate_customers() -> pd.DataFrame:
                 k=1,
             )[0]
 
-            act_rate = ACTIVATION_RATE_POST if m >= ACTIVATION_FEATURE_MONTH else ACTIVATION_RATE_PRE
+            act_rate = (
+                ACTIVATION_RATE_POST if m >= ACTIVATION_FEATURE_MONTH else ACTIVATION_RATE_PRE
+            )
             if py_rng.random() < act_rate:
                 lag = py_rng.randint(1, 14)
                 activated_date = signup_date + timedelta(days=lag)
@@ -168,17 +201,19 @@ def generate_customers() -> pd.DataFrame:
             else:
                 activated_date = None
 
-            rows.append({
-                "id": cid,
-                "signup_date": signup_date,
-                "activated_date": activated_date,
-                "source": channel,
-                "channel": channel,
-                "country": country,
-                "industry": industry,
-                "company_size": company_size,
-                "initial_plan": initial_plan,
-            })
+            rows.append(
+                {
+                    "id": cid,
+                    "signup_date": signup_date,
+                    "activated_date": activated_date,
+                    "source": channel,
+                    "channel": channel,
+                    "country": country,
+                    "industry": industry,
+                    "company_size": company_size,
+                    "initial_plan": initial_plan,
+                }
+            )
             cid += 1
 
     return pd.DataFrame(rows)
@@ -251,7 +286,10 @@ def generate_subscriptions(customers: pd.DataFrame) -> pd.DataFrame:
                     )[0]
                     ended_at = candidate
                     if event_type == "churn":
-                        if plan == "Pro" and m_idx in (PRO_PRICE_HIKE_MONTH, PRO_PRICE_HIKE_MONTH + 1):
+                        if plan == "Pro" and m_idx in (
+                            PRO_PRICE_HIKE_MONTH,
+                            PRO_PRICE_HIKE_MONTH + 1,
+                        ):
                             end_reason = "price_increase"
                         elif m_idx == OUTAGE_MONTH:
                             end_reason = "outage_followup"
@@ -268,19 +306,29 @@ def generate_subscriptions(customers: pd.DataFrame) -> pd.DataFrame:
                     break
                 current = month_start(m_idx + 1) if m_idx < MONTHS else END_DATE + timedelta(days=1)
 
-            mrr = PRO_PRICE_NEW if (plan == "Pro" and date_to_month_idx(start) >= PRO_PRICE_HIKE_MONTH) else PLAN_PRICE[plan]
-            rows.append({
-                "id": sid,
-                "customer_id": int(c["id"]),
-                "plan": plan,
-                "mrr_usd": mrr,
-                "started_at": start,
-                "ended_at": ended_at,
-                "end_reason": end_reason,
-            })
+            mrr = (
+                PRO_PRICE_NEW
+                if (plan == "Pro" and date_to_month_idx(start) >= PRO_PRICE_HIKE_MONTH)
+                else PLAN_PRICE[plan]
+            )
+            rows.append(
+                {
+                    "id": sid,
+                    "customer_id": int(c["id"]),
+                    "plan": plan,
+                    "mrr_usd": mrr,
+                    "started_at": start,
+                    "ended_at": ended_at,
+                    "end_reason": end_reason,
+                }
+            )
             sid += 1
 
-            if end_reason in ("upgrade", "downgrade") and new_plan is not None and ended_at is not None:
+            if (
+                end_reason in ("upgrade", "downgrade")
+                and new_plan is not None
+                and ended_at is not None
+            ):
                 plan = new_plan
                 start = ended_at + timedelta(days=1)
                 if start > END_DATE:
@@ -310,15 +358,19 @@ def generate_subscriptions(customers: pd.DataFrame) -> pd.DataFrame:
         original_reason = r["end_reason"]
         subs.at[idx, "ended_at"] = m11_end
         subs.at[idx, "end_reason"] = "price_increase_migration"
-        new_migration_rows.append({
-            "id": None,
-            "customer_id": int(r["customer_id"]),
-            "plan": "Pro",
-            "mrr_usd": PRO_PRICE_NEW,
-            "started_at": m12_start,
-            "ended_at": original_end,
-            "end_reason": original_reason if original_reason != "price_increase_migration" else None,
-        })
+        new_migration_rows.append(
+            {
+                "id": None,
+                "customer_id": int(r["customer_id"]),
+                "plan": "Pro",
+                "mrr_usd": PRO_PRICE_NEW,
+                "started_at": m12_start,
+                "ended_at": original_end,
+                "end_reason": original_reason
+                if original_reason != "price_increase_migration"
+                else None,
+            }
+        )
 
     if new_migration_rows:
         next_id = int(subs["id"].max()) + 1
@@ -390,13 +442,15 @@ def generate_product_events(customers: pd.DataFrame, subs: pd.DataFrame) -> pd.D
             props = {"path": f"/{event_name.replace('_', '-')}"}
             if event_name == "feature_use":
                 props["feature"] = py_rng.choice(["cohorts", "funnels", "dashboards", "alerts"])
-            rows.append({
-                "id": eid,
-                "customer_id": int(customer_id),
-                "event_name": event_name,
-                "ts": ts,
-                "properties": json.dumps(props),
-            })
+            rows.append(
+                {
+                    "id": eid,
+                    "customer_id": int(customer_id),
+                    "event_name": event_name,
+                    "ts": ts,
+                    "properties": json.dumps(props),
+                }
+            )
             eid += 1
 
     return pd.DataFrame(rows)
@@ -431,15 +485,17 @@ def generate_marketing_spend() -> pd.DataFrame:
                 "outbound": "sdr_outbound_q",
             }[channel]
 
-            rows.append({
-                "date": d,
-                "channel": channel,
-                "campaign": campaign,
-                "spend_usd": round(spend, 2),
-                "impressions": impressions,
-                "clicks": clicks,
-                "conversions": conversions,
-            })
+            rows.append(
+                {
+                    "date": d,
+                    "channel": channel,
+                    "campaign": campaign,
+                    "spend_usd": round(spend, 2),
+                    "impressions": impressions,
+                    "clicks": clicks,
+                    "conversions": conversions,
+                }
+            )
 
     return pd.DataFrame(rows)
 
@@ -449,26 +505,30 @@ def generate_referrals(customers: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for d in days:
         m_idx = date_to_month_idx(d)
-        if m_idx < REFERRAL_PROGRAM_MONTH:
-            lam = 0.2  # ~6/month
-        else:
-            lam = 2.7  # ~80/month
+        # ~6/month pre-program-launch, ~80/month after
+        lam = 0.2 if m_idx < REFERRAL_PROGRAM_MONTH else 2.7
         n_refs = int(np_rng.poisson(lam))
         for _ in range(n_refs):
             eligible_referrers = customers[customers["signup_date"] <= d - timedelta(days=14)]
             if len(eligible_referrers) == 0:
                 continue
-            referrer = eligible_referrers.sample(1, random_state=int(np_rng.integers(0, 1_000_000))).iloc[0]
+            referrer = eligible_referrers.sample(
+                1, random_state=int(np_rng.integers(0, 1_000_000))
+            ).iloc[0]
             referred = customers[customers["signup_date"] >= d - timedelta(days=14)]
             referred = referred[referred["id"] != referrer["id"]]
             if len(referred) == 0:
                 continue
-            referred_row = referred.sample(1, random_state=int(np_rng.integers(0, 1_000_000))).iloc[0]
-            rows.append({
-                "referrer_id": int(referrer["id"]),
-                "referred_id": int(referred_row["id"]),
-                "referred_at": d,
-            })
+            referred_row = referred.sample(1, random_state=int(np_rng.integers(0, 1_000_000))).iloc[
+                0
+            ]
+            rows.append(
+                {
+                    "referrer_id": int(referrer["id"]),
+                    "referred_id": int(referred_row["id"]),
+                    "referred_at": d,
+                }
+            )
 
     return pd.DataFrame(rows)
 
@@ -476,27 +536,31 @@ def generate_referrals(customers: pd.DataFrame) -> pd.DataFrame:
 def generate_company_events() -> pd.DataFrame:
     rows = []
     for m, dom, event_type, description in COMPANY_MOMENTS:
-        rows.append({
-            "date": month_start(m) + timedelta(days=dom - 1),
-            "event_type": event_type,
-            "description": description,
-        })
+        rows.append(
+            {
+                "date": month_start(m) + timedelta(days=dom - 1),
+                "event_type": event_type,
+                "description": description,
+            }
+        )
 
     # A few quieter background events for realism
     background = [
-        (2,   5,  "team_milestone",  "Crossed 1,000 signups."),
-        (4,  15,  "hiring",          "Hired first growth analyst."),
-        (9,  20,  "investor_update", "Closed seed extension."),
-        (14, 10,  "product_launch",  "Integrations marketplace shipped."),
-        (17,  3,  "rebrand",         "Public rebrand and new homepage."),
-        (20, 22,  "partnership",     "Co-marketing partnership with Acme."),
+        (2, 5, "team_milestone", "Crossed 1,000 signups."),
+        (4, 15, "hiring", "Hired first growth analyst."),
+        (9, 20, "investor_update", "Closed seed extension."),
+        (14, 10, "product_launch", "Integrations marketplace shipped."),
+        (17, 3, "rebrand", "Public rebrand and new homepage."),
+        (20, 22, "partnership", "Co-marketing partnership with Acme."),
     ]
     for m, dom, event_type, description in background:
-        rows.append({
-            "date": month_start(m) + timedelta(days=dom - 1),
-            "event_type": event_type,
-            "description": description,
-        })
+        rows.append(
+            {
+                "date": month_start(m) + timedelta(days=dom - 1),
+                "event_type": event_type,
+                "description": description,
+            }
+        )
 
     return pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
 
@@ -504,6 +568,7 @@ def generate_company_events() -> pd.DataFrame:
 # ============================================================================
 # Rollup tables
 # ============================================================================
+
 
 def _active_subs_on(subs: pd.DataFrame, d: date) -> pd.DataFrame:
     started = subs["started_at"] <= d
@@ -527,25 +592,30 @@ def roll_daily_metrics(
     first_paid_by_customer = paid_subs.sort_values("started_at").groupby("customer_id").first()
     new_paid_by_day = first_paid_by_customer.groupby("started_at").size().to_dict()
 
-    churned_subs = paid_subs[paid_subs["end_reason"].isin(
-        ["voluntary", "involuntary_payment", "price_increase", "outage_followup"]
-    )]
+    churned_subs = paid_subs[
+        paid_subs["end_reason"].isin(
+            ["voluntary", "involuntary_payment", "price_increase", "outage_followup"]
+        )
+    ]
     churned_by_day = churned_subs.groupby("ended_at").size().to_dict()
     churn_mrr_by_day = churned_subs.groupby("ended_at")["mrr_usd"].sum().to_dict()
 
     new_mrr_by_day = paid_subs[paid_subs["end_reason"] != "price_increase_migration"]
     # Exclude migration-replacement subs from "new" MRR (they were already counted as Pro)
-    is_migration_replacement = (
-        (paid_subs["mrr_usd"] == PRO_PRICE_NEW)
-        & (paid_subs["started_at"] == month_start(PRO_PRICE_HIKE_MONTH))
+    is_migration_replacement = (paid_subs["mrr_usd"] == PRO_PRICE_NEW) & (
+        paid_subs["started_at"] == month_start(PRO_PRICE_HIKE_MONTH)
     )
-    new_mrr_by_day = paid_subs[~is_migration_replacement].groupby("started_at")["mrr_usd"].sum().to_dict()
+    new_mrr_by_day = (
+        paid_subs[~is_migration_replacement].groupby("started_at")["mrr_usd"].sum().to_dict()
+    )
 
     # Expansion / contraction: pair (closed sub with reason=upgrade/downgrade) with
     # the next sub for the same customer starting the day after.
     expansion_by_day: dict[date, float] = {}
     contraction_by_day: dict[date, float] = {}
-    for cust_id, group in paid_subs.sort_values(["customer_id", "started_at"]).groupby("customer_id"):
+    for _cust_id, group in paid_subs.sort_values(["customer_id", "started_at"]).groupby(
+        "customer_id"
+    ):
         rows = group.to_dict("records")
         for i in range(len(rows) - 1):
             cur, nxt = rows[i], rows[i + 1]
@@ -554,7 +624,9 @@ def roll_daily_metrics(
                 expansion_by_day[d] = expansion_by_day.get(d, 0) + (nxt["mrr_usd"] - cur["mrr_usd"])
             elif cur["end_reason"] == "downgrade":
                 d = nxt["started_at"]
-                contraction_by_day[d] = contraction_by_day.get(d, 0) + (cur["mrr_usd"] - nxt["mrr_usd"])
+                contraction_by_day[d] = contraction_by_day.get(d, 0) + (
+                    cur["mrr_usd"] - nxt["mrr_usd"]
+                )
 
     # DAU: distinct customers with an event on day d
     events_with_day = events.copy()
@@ -576,21 +648,23 @@ def roll_daily_metrics(
         churn_mrr = float(churn_mrr_by_day.get(d, 0.0))
 
         month_period = pd.Period(d, freq="M")
-        rows.append({
-            "date": d,
-            "new_signups": int(new_signups.get(d, 0)),
-            "new_activations": int(new_activations.get(d, 0)),
-            "new_paid": int(new_paid_by_day.get(d, 0)),
-            "churned": int(churned_by_day.get(d, 0)),
-            "gross_new_mrr": round(gross_new, 2),
-            "expansion_mrr": round(expansion, 2),
-            "contraction_mrr": round(contraction, 2),
-            "churn_mrr": round(churn_mrr, 2),
-            "net_new_mrr": round(gross_new + expansion - contraction - churn_mrr, 2),
-            "dau": int(dau_by_day.get(d, 0)),
-            "mau": int(mau_by_month.get(month_period, 0)),
-            "total_paying": total_paying,
-        })
+        rows.append(
+            {
+                "date": d,
+                "new_signups": int(new_signups.get(d, 0)),
+                "new_activations": int(new_activations.get(d, 0)),
+                "new_paid": int(new_paid_by_day.get(d, 0)),
+                "churned": int(churned_by_day.get(d, 0)),
+                "gross_new_mrr": round(gross_new, 2),
+                "expansion_mrr": round(expansion, 2),
+                "contraction_mrr": round(contraction, 2),
+                "churn_mrr": round(churn_mrr, 2),
+                "net_new_mrr": round(gross_new + expansion - contraction - churn_mrr, 2),
+                "dau": int(dau_by_day.get(d, 0)),
+                "mau": int(mau_by_month.get(month_period, 0)),
+                "total_paying": total_paying,
+            }
+        )
 
     return pd.DataFrame(rows)
 
@@ -609,23 +683,30 @@ def roll_monthly_metrics(subs: pd.DataFrame) -> pd.DataFrame:
         mrr_end = float(active_end["mrr_usd"].sum())
 
         # MRR added: sum of new subs started in this month (excluding migration replacements)
-        is_migration_replacement = (
-            (paid_subs["mrr_usd"] == PRO_PRICE_NEW)
-            & (paid_subs["started_at"] == month_start(PRO_PRICE_HIKE_MONTH))
+        is_migration_replacement = (paid_subs["mrr_usd"] == PRO_PRICE_NEW) & (
+            paid_subs["started_at"] == month_start(PRO_PRICE_HIKE_MONTH)
         )
-        new_in_month = paid_subs[(paid_subs["started_at"] >= ms) & (paid_subs["started_at"] <= me) & (~is_migration_replacement)]
+        new_in_month = paid_subs[
+            (paid_subs["started_at"] >= ms)
+            & (paid_subs["started_at"] <= me)
+            & (~is_migration_replacement)
+        ]
         mrr_added = float(new_in_month["mrr_usd"].sum())
 
         churned_in_month = paid_subs[
             paid_subs["ended_at"].between(ms, me)
-            & paid_subs["end_reason"].isin(["voluntary", "involuntary_payment", "price_increase", "outage_followup"])
+            & paid_subs["end_reason"].isin(
+                ["voluntary", "involuntary_payment", "price_increase", "outage_followup"]
+            )
         ]
         churn_mrr = float(churned_in_month["mrr_usd"].sum())
 
         # Expansion / contraction from upgrade/downgrade pairs in this month
         expansion_mrr = 0.0
         contraction_mrr = 0.0
-        for cust_id, group in paid_subs.sort_values(["customer_id", "started_at"]).groupby("customer_id"):
+        for _cust_id, group in paid_subs.sort_values(["customer_id", "started_at"]).groupby(
+            "customer_id"
+        ):
             recs = group.to_dict("records")
             for i in range(len(recs) - 1):
                 cur, nxt = recs[i], recs[i + 1]
@@ -641,21 +722,23 @@ def roll_monthly_metrics(subs: pd.DataFrame) -> pd.DataFrame:
         net_churn_rate = ((churn_mrr - expansion_mrr) / mrr_start * 100) if mrr_start else 0.0
         mom_growth_pct = ((mrr_end - mrr_start) / mrr_start * 100) if mrr_start else 0.0
 
-        rows.append({
-            "month": ms.strftime("%Y-%m"),
-            "mrr_start": round(mrr_start, 2),
-            "mrr_added": round(mrr_added, 2),
-            "expansion": round(expansion_mrr, 2),
-            "contraction": round(contraction_mrr, 2),
-            "churn": round(churn_mrr, 2),
-            "mrr_end": round(mrr_end, 2),
-            "mom_growth_pct": round(mom_growth_pct, 2),
-            "arr": round(mrr_end * 12, 2),
-            "paying_customers": paying_customers,
-            "arpu": round(arpu, 2),
-            "gross_churn_rate": round(gross_churn_rate, 2),
-            "net_churn_rate": round(net_churn_rate, 2),
-        })
+        rows.append(
+            {
+                "month": ms.strftime("%Y-%m"),
+                "mrr_start": round(mrr_start, 2),
+                "mrr_added": round(mrr_added, 2),
+                "expansion": round(expansion_mrr, 2),
+                "contraction": round(contraction_mrr, 2),
+                "churn": round(churn_mrr, 2),
+                "mrr_end": round(mrr_end, 2),
+                "mom_growth_pct": round(mom_growth_pct, 2),
+                "arr": round(mrr_end * 12, 2),
+                "paying_customers": paying_customers,
+                "arpu": round(arpu, 2),
+                "gross_churn_rate": round(gross_churn_rate, 2),
+                "net_churn_rate": round(net_churn_rate, 2),
+            }
+        )
 
     return pd.DataFrame(rows)
 
@@ -667,19 +750,31 @@ def roll_cac_by_channel(
 ) -> pd.DataFrame:
     paid_subs = subs[subs["mrr_usd"] > 0]
     first_paid = paid_subs.sort_values("started_at").groupby("customer_id").first().reset_index()
-    first_paid = first_paid.merge(customers[["id", "channel"]], left_on="customer_id", right_on="id", how="left")
-    first_paid["month"] = first_paid["started_at"].apply(lambda d: month_start(date_to_month_idx(d)).strftime("%Y-%m"))
+    first_paid = first_paid.merge(
+        customers[["id", "channel"]], left_on="customer_id", right_on="id", how="left"
+    )
+    first_paid["month"] = first_paid["started_at"].apply(
+        lambda d: month_start(date_to_month_idx(d)).strftime("%Y-%m")
+    )
 
     marketing = marketing.copy()
-    marketing["month"] = marketing["date"].apply(lambda d: month_start(date_to_month_idx(d)).strftime("%Y-%m"))
+    marketing["month"] = marketing["date"].apply(
+        lambda d: month_start(date_to_month_idx(d)).strftime("%Y-%m")
+    )
     spend_by = marketing.groupby(["month", "channel"])["spend_usd"].sum().reset_index()
 
-    new_paid_by = first_paid.groupby(["month", "channel"]).size().reset_index(name="new_paying_customers")
+    new_paid_by = (
+        first_paid.groupby(["month", "channel"]).size().reset_index(name="new_paying_customers")
+    )
 
     out = spend_by.merge(new_paid_by, on=["month", "channel"], how="left")
     out["new_paying_customers"] = out["new_paying_customers"].fillna(0).astype(int)
     out["cac_usd"] = out.apply(
-        lambda r: round(r["spend_usd"] / r["new_paying_customers"], 2) if r["new_paying_customers"] > 0 else None,
+        lambda r: (
+            round(r["spend_usd"] / r["new_paying_customers"], 2)
+            if r["new_paying_customers"] > 0
+            else None
+        ),
         axis=1,
     )
     out["spend_usd"] = out["spend_usd"].round(2)
@@ -705,12 +800,14 @@ def roll_cohort_retention(customers: pd.DataFrame, subs: pd.DataFrame) -> pd.Dat
             active_in_cohort = active[active["customer_id"].isin(cohort_customers["customer_id"])]
             retained = int(active_in_cohort["customer_id"].nunique())
             surviving_mrr = float(active_in_cohort["mrr_usd"].sum())
-            rows.append({
-                "cohort_month": month_start(cohort_m).strftime("%Y-%m"),
-                "age_months": age,
-                "retained_pct": round(retained / cohort_size * 100, 2),
-                "surviving_mrr": round(surviving_mrr, 2),
-            })
+            rows.append(
+                {
+                    "cohort_month": month_start(cohort_m).strftime("%Y-%m"),
+                    "age_months": age,
+                    "retained_pct": round(retained / cohort_size * 100, 2),
+                    "surviving_mrr": round(surviving_mrr, 2),
+                }
+            )
 
     return pd.DataFrame(rows)
 
@@ -718,6 +815,7 @@ def roll_cohort_retention(customers: pd.DataFrame, subs: pd.DataFrame) -> pd.Dat
 # ============================================================================
 # Main
 # ============================================================================
+
 
 def main() -> None:
     setup_rng(SEED)
@@ -770,16 +868,16 @@ def main() -> None:
     print()
     print("Done. Summary:")
     for table, df in [
-        ("company_profile",  cp),
-        ("customers",        customers),
-        ("subscriptions",    subs),
-        ("product_events",   events),
-        ("marketing_spend",  marketing),
-        ("referrals",        referrals),
-        ("company_events",   company_events),
-        ("daily_metrics",    daily),
-        ("monthly_metrics",  monthly),
-        ("cac_by_channel",   cac),
+        ("company_profile", cp),
+        ("customers", customers),
+        ("subscriptions", subs),
+        ("product_events", events),
+        ("marketing_spend", marketing),
+        ("referrals", referrals),
+        ("company_events", company_events),
+        ("daily_metrics", daily),
+        ("monthly_metrics", monthly),
+        ("cac_by_channel", cac),
         ("cohort_retention", cohort),
     ]:
         size_kb = (OUT / f"{table}.csv").stat().st_size / 1024

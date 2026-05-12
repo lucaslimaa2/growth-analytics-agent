@@ -10,3 +10,31 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "uvicorn>=0.46.0",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.12",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort (import ordering)
+    "B",        # flake8-bugbear (likely bugs)
+    "UP",       # pyupgrade (modern Python idioms)
+    "C4",       # flake8-comprehensions
+    "SIM",      # flake8-simplify
+]
+ignore = [
+    "E501",     # line-length: let the formatter handle wrapping
+    "SIM117",   # combined `with` statements are sometimes less readable
+    "B008",     # function calls in defaults (FastAPI uses this pattern)
+]
+
+[tool.ruff.format]
+docstring-code-format = true

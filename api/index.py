@@ -26,6 +26,4 @@ def ping():
             {"ok": False, "error": "SUPABASE_DB_URL_POOLED not set"}, status_code=500
         )
     except Exception as exc:
-        return JSONResponse(
-            {"ok": False, "error": f"{type(exc).__name__}: {exc}"}, status_code=500
-        )
+        return JSONResponse({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, status_code=500)

@@ -88,10 +88,7 @@ def query_database(sql: str) -> QueryResult:
                 columns = [d[0] for d in cur.description]
                 fetched = cur.fetchmany(MAX_ROWS + 1)
                 truncated = len(fetched) > MAX_ROWS
-                rows = [
-                    [_to_json_safe(v) for v in row]
-                    for row in fetched[:MAX_ROWS]
-                ]
+                rows = [[_to_json_safe(v) for v in row] for row in fetched[:MAX_ROWS]]
                 return {
                     "columns": columns,
                     "rows": rows,
@@ -125,12 +122,18 @@ def format_as_markdown(result: QueryResult) -> str:
     for row in result["rows"]:
         cells = ["" if v is None else str(v) for v in row]
         lines.append("| " + " | ".join(cells) + " |")
-    footer = f"\n*{result['row_count']} rows" + (" (truncated at 500)*" if result["truncated"] else "*")
+    footer = f"\n*{result['row_count']} rows" + (
+        " (truncated at 500)*" if result["truncated"] else "*"
+    )
     return "\n".join(lines) + footer
 
 
 if __name__ == "__main__":
-    sql = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "SELECT current_user, COUNT(*) AS n_customers FROM customers"
+    sql = (
+        " ".join(sys.argv[1:])
+        if len(sys.argv) > 1
+        else "SELECT current_user, COUNT(*) AS n_customers FROM customers"
+    )
     print(f"SQL: {sql}\n")
     result = query_database(sql)
     print(format_as_markdown(result))
