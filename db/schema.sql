@@ -128,3 +128,20 @@ CREATE TABLE cohort_retention (
     surviving_mrr  NUMERIC(12, 2) NOT NULL,
     PRIMARY KEY (cohort_month, age_months)
 );
+
+-- ============================================================================
+-- Row Level Security: enabled with no policies, blocks PostgREST anon access.
+-- The postgres role used by our loader and agent bypasses RLS automatically.
+-- ============================================================================
+
+ALTER TABLE company_profile  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customers        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subscriptions    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_events   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE marketing_spend  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE referrals        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE company_events   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_metrics    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE monthly_metrics  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cac_by_channel   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cohort_retention ENABLE ROW LEVEL SECURITY;
