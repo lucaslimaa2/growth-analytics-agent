@@ -47,4 +47,7 @@ build/
 *.sqlite
 *.sqlite3
 
+# --- Generated data ---
+data/
+
 .vercel
