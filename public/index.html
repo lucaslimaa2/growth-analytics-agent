@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Growth Analytics Agent: ask plain-English questions about a synthetic SaaS company's growth metrics.">
+  <title>Growth Analytics Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.plot.ly/plotly-3.0.0.min.js"></script>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Growth Analytics Agent</h1>
+      <p class="tagline">
+        Ask plain-English questions about a synthetic SaaS company's growth metrics.
+        The agent autonomously queries the database, runs analyses, and returns insights.
+      </p>
+    </header>
+
+    <section id="chat">
+      <div id="history" aria-live="polite"></div>
+
+      <form id="composer">
+        <input
+          id="question"
+          type="text"
+          placeholder="Why did MoM growth flatline in month 7?"
+          autocomplete="off"
+          required
+          maxlength="2000"
+        />
+        <button type="submit" id="send">Ask</button>
+      </form>
+
+      <div id="suggestions">
+        <span class="suggest-label">Try:</span>
+        <button class="suggest" type="button">What's our current MRR?</button>
+        <button class="suggest" type="button">Show me retention by acquisition channel</button>
+        <button class="suggest" type="button">Which channel has the worst CAC?</button>
+        <button class="suggest" type="button">How did the Pro plan price change affect churn?</button>
+      </div>
+    </section>
+
+    <footer>
+      <p>
+        Project #2 of <a href="https://lucaslima.xyz/ai-portfolio" target="_blank" rel="noopener">Lucas Lima's AI portfolio</a>.
+        Synthetic data; not a real company.
+      </p>
+    </footer>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

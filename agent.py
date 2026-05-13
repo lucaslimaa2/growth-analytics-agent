@@ -408,10 +408,26 @@ def _preview(args: dict[str, Any], max_len: int = 200) -> dict[str, Any]:
     }
 
 
-def run_agent(question: str) -> str:
-    """Run one full agentic turn: ask Claude, run tools, repeat until answer."""
+# Tools whose results the frontend renders directly (chart, table, summary panel).
+# Other tool outputs (sql, get_metric, etc.) feed Claude but are not surfaced to the user.
+RENDERABLE_TOOLS = {"make_chart", "make_table", "summarize_findings"}
+
+
+def run_agent(question: str) -> dict[str, Any]:
+    """Run one full agentic turn.
+
+    Returns:
+        {
+          "answer":     str  - the final text answer,
+          "outputs":    list - structured outputs to render in the UI,
+                              each shaped {"kind": "chart"|"table"|"summary", "data": {...}},
+          "iterations": int  - how many model calls happened,
+          "stop_reason": str - terminal stop_reason from the model,
+        }
+    """
     client = anthropic.Anthropic()
     messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
+    renderable_outputs: list[dict[str, Any]] = []
 
     log.info("agent_start", extra={"question": question, "model": MODEL})
 
@@ -443,17 +459,26 @@ def run_agent(question: str) -> str:
         )
 
         if response.stop_reason == "end_turn":
-            # Final answer. Concatenate any text blocks.
             text_blocks = [b.text for b in response.content if b.type == "text"]
             final = "\n".join(text_blocks).strip()
-            log.info("agent_done", extra={"iterations": iteration, "answer_chars": len(final)})
-            return final
+            log.info(
+                "agent_done",
+                extra={
+                    "iterations": iteration,
+                    "answer_chars": len(final),
+                    "renderable_count": len(renderable_outputs),
+                },
+            )
+            return {
+                "answer": final,
+                "outputs": renderable_outputs,
+                "iterations": iteration,
+                "stop_reason": "end_turn",
+            }
 
         if response.stop_reason == "tool_use":
-            # Append the assistant turn (must include the tool_use blocks verbatim).
             messages.append({"role": "assistant", "content": response.content})
 
-            # Execute every tool_use block and collect results.
             tool_results = []
             for block in response.content:
                 if block.type != "tool_use":
@@ -470,16 +495,38 @@ def run_agent(question: str) -> str:
                         "content": result_json,
                     }
                 )
+                # Capture chart/table/summary outputs for the frontend.
+                if block.name in RENDERABLE_TOOLS:
+                    try:
+                        parsed = json.loads(result_json)
+                        kind = {
+                            "make_chart": "chart",
+                            "make_table": "table",
+                            "summarize_findings": "summary",
+                        }[block.name]
+                        renderable_outputs.append({"kind": kind, "data": parsed})
+                    except (json.JSONDecodeError, KeyError):
+                        pass
             messages.append({"role": "user", "content": tool_results})
             continue
 
         # Any other stop_reason (max_tokens, refusal, etc.) ends the loop.
         log.warning("agent_unexpected_stop", extra={"stop_reason": response.stop_reason})
         text_blocks = [b.text for b in response.content if b.type == "text"]
-        return "\n".join(text_blocks).strip() or f"(stopped: {response.stop_reason})"
+        return {
+            "answer": "\n".join(text_blocks).strip() or f"(stopped: {response.stop_reason})",
+            "outputs": renderable_outputs,
+            "iterations": iteration,
+            "stop_reason": response.stop_reason,
+        }
 
     log.warning("agent_iteration_cap", extra={"cap": MAX_ITERATIONS})
-    return f"(agent exceeded {MAX_ITERATIONS} iterations without a final answer)"
+    return {
+        "answer": f"(agent exceeded {MAX_ITERATIONS} iterations without a final answer)",
+        "outputs": renderable_outputs,
+        "iterations": MAX_ITERATIONS,
+        "stop_reason": "iteration_cap",
+    }
 
 
 def main() -> None:
@@ -493,11 +540,16 @@ def main() -> None:
     question = " ".join(sys.argv[1:])
     if not os.environ.get("ANTHROPIC_API_KEY"):
         sys.exit("ERROR: ANTHROPIC_API_KEY not set in .env")
-    answer = run_agent(question)
+    result = run_agent(question)
     print()
     print("=" * 70)
-    print(answer)
+    print(result["answer"])
     print("=" * 70)
+    if result["outputs"]:
+        print(
+            f"\n[{len(result['outputs'])} renderable output(s): "
+            f"{', '.join(o['kind'] for o in result['outputs'])}]"
+        )
 
 
 if __name__ == "__main__":
