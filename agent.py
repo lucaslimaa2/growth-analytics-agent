@@ -24,8 +24,13 @@ import anthropic
 from dotenv import load_dotenv
 
 from lib.logging import get_logger
+from tools.cohort import cohort_analysis
+from tools.funnel import funnel_analysis
+from tools.metrics import get_metric
 from tools.schema import get_schema
+from tools.segment import segment_breakdown
 from tools.sql import query_database
+from tools.time_series import time_series_compare
 
 load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 
@@ -39,54 +44,223 @@ SYSTEM_PROMPT = """You are a growth analytics agent for a B2B SaaS company.
 You answer questions about growth metrics by autonomously querying the company's
 Postgres database, then returning concise, numbers-first insights.
 
-You have two tools:
-  - get_schema(): introspect the tables and columns available.
-  - query_database(sql): run a read-only SQL query. Returns up to 500 rows.
+Your tools, in preferred order:
+
+  PRE-BUILT METRIC TOOLS (use these first when they fit; they're fast and the
+  math is guaranteed consistent across questions):
+    - get_metric(name, period): canonical lookup. Supported names: mrr, arr,
+      mom_growth, arpu, gross_churn_rate, net_churn_rate, paying_customers,
+      new_paying, ltv. Period: "YYYY-MM", "latest", or omit for full history.
+    - cohort_analysis(cohort_by, segment_by, window_months): retention curve
+      by signup-paid-month cohort. segment_by can split by channel, country,
+      initial_plan, company_size, industry.
+    - funnel_analysis(steps, segment_by): conversion rates across an ordered
+      list of step names. Recognized steps: signup, activated, first_paid,
+      page_view, feature_use, report_export, data_import, team_invite,
+      billing_view, dashboard_load, api_call.
+    - time_series_compare(metric, period_a, period_b, breakdown_by):
+      period-over-period delta with an optional dimensional breakdown
+      showing which segment drove the change.
+    - segment_breakdown(metric, dimension, period): split a single metric
+      by a dimension for one period.
+
+  GENERAL-PURPOSE TOOLS (fallback when no metric tool fits):
+    - get_schema(): introspect tables/columns.
+    - query_database(sql): read-only SELECT, up to 500 rows.
 
 Workflow:
-  1. Call get_schema first if you don't already know the schema for this question.
-  2. Write SQL to answer the user. Prefer the pre-computed rollup tables
-     (monthly_metrics, daily_metrics, cac_by_channel, cohort_retention) over
-     recomputing aggregates from raw tables when the rollup is sufficient.
-  3. If a result is truncated at 500 rows, refine the query (add WHERE clauses,
-     aggregate, narrow the time range).
-  4. When you have the answer, return it concisely: lead with the number, then
-     one or two sentences explaining what's happening.
+  1. Pick a pre-built metric tool when the question maps to one of them.
+     Only fall back to query_database for ad-hoc questions the metric tools
+     don't cover.
+  2. If you need the schema first, call get_schema. Otherwise skip it.
+  3. If a query result is truncated at 500 rows, refine (add WHERE, aggregate,
+     narrow time range).
+  4. Lead with the number. One or two sentences of interpretation.
 
 Constraints:
-  - The database is read-only. Don't attempt INSERT, UPDATE, DELETE, DROP.
-  - No preamble. No "let me check..." filler. Lead with the answer.
+  - Read-only database. No INSERT, UPDATE, DELETE, DROP.
+  - No "let me check..." preamble.
+  - Dataset covers 24 months from 2024-06 through 2026-05. When the user says
+    "month N", treat it as the Nth month of the dataset unless context makes
+    a calendar month clearer.
 """
 
 # Anthropic tool definitions (JSON schemas Claude sees).
 TOOLS: list[dict[str, Any]] = [
     {
-        "name": "get_schema",
+        "name": "get_metric",
         "description": (
-            "Return the structure of the public schema: every table with its columns, "
-            "types, nullability, and a plain-English description. Call this once at the "
-            "start of a question if you don't already know the schema."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-    },
-    {
-        "name": "query_database",
-        "description": (
-            "Run a read-only SQL query against Postgres. Returns columns, rows (max 500), "
-            "and a truncated flag. Use this for any data fetch. SELECT only; writes are "
-            "rejected by the database role."
+            "Look up a canonical company metric. Use this for any of: mrr, arr, "
+            "mom_growth, arpu, gross_churn_rate, net_churn_rate, paying_customers, "
+            "new_paying, ltv. Returns one or more {month, value} points."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "sql": {
+                "name": {
                     "type": "string",
-                    "description": "A single SQL SELECT statement.",
-                }
+                    "enum": [
+                        "mrr",
+                        "arr",
+                        "mom_growth",
+                        "arpu",
+                        "gross_churn_rate",
+                        "net_churn_rate",
+                        "paying_customers",
+                        "new_paying",
+                        "ltv",
+                    ],
+                },
+                "period": {
+                    "type": "string",
+                    "description": "YYYY-MM for a single month, 'latest' for the most recent month, or omit for all 24 months.",
+                },
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "cohort_analysis",
+        "description": (
+            "Compute retention curves by first-paid-month cohort. Returns rows of "
+            "{cohort_month, age_months, segment, retained_pct, surviving_mrr}. "
+            "Pass segment_by to split each cohort by a customer dimension."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "cohort_by": {
+                    "type": "string",
+                    "enum": ["first_paid_month"],
+                    "default": "first_paid_month",
+                },
+                "segment_by": {
+                    "type": "string",
+                    "enum": ["channel", "country", "initial_plan", "company_size", "industry"],
+                    "description": "Optional customer dimension to split each cohort by.",
+                },
+                "window_months": {
+                    "type": "integer",
+                    "description": "Max cohort age to return (default 12).",
+                    "default": 12,
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "funnel_analysis",
+        "description": (
+            "Compute conversion rates across an ordered list of lifecycle steps. "
+            "Steps are evaluated in temporal order: a customer counts at step N "
+            "only if they hit every earlier step first. Recognized steps: signup, "
+            "activated, first_paid, plus the product event names "
+            "(page_view, feature_use, report_export, data_import, team_invite, "
+            "billing_view, dashboard_load, api_call)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "steps": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Ordered list of step names. Need at least 2.",
+                },
+                "segment_by": {
+                    "type": "string",
+                    "enum": ["channel", "country", "initial_plan", "company_size", "industry"],
+                    "description": "Optional customer dimension to split the funnel by.",
+                },
+            },
+            "required": ["steps"],
+        },
+    },
+    {
+        "name": "time_series_compare",
+        "description": (
+            "Compare a metric between two months. Returns totals, delta, percent "
+            "change, and optionally a breakdown by dimension showing which segment "
+            "drove the change. Metrics: mrr_end, new_signups, new_activations, "
+            "new_paying, churn_mrr."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string",
+                    "enum": [
+                        "mrr_end",
+                        "new_signups",
+                        "new_activations",
+                        "new_paying",
+                        "churn_mrr",
+                    ],
+                },
+                "period_a": {
+                    "type": "string",
+                    "description": "YYYY-MM (the earlier or baseline period).",
+                },
+                "period_b": {
+                    "type": "string",
+                    "description": "YYYY-MM (the later or comparison period).",
+                },
+                "breakdown_by": {
+                    "type": "string",
+                    "description": "Optional dimension. Valid pairs: (mrr_end, plan), (new_signups, channel|country|initial_plan), (new_activations, channel), (new_paying, channel), (churn_mrr, end_reason|plan).",
+                },
+            },
+            "required": ["metric", "period_a", "period_b"],
+        },
+    },
+    {
+        "name": "segment_breakdown",
+        "description": (
+            "Split a metric by a dimension for one period. Returns rows of "
+            "{segment, value} sorted descending. Supports the same metric/dimension "
+            "pairs as time_series_compare's breakdown_by."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string",
+                    "enum": [
+                        "mrr_end",
+                        "new_signups",
+                        "new_activations",
+                        "new_paying",
+                        "churn_mrr",
+                    ],
+                },
+                "dimension": {
+                    "type": "string",
+                    "description": "Dimension to split by (plan, channel, country, initial_plan, end_reason).",
+                },
+                "period": {"type": "string", "description": "YYYY-MM."},
+            },
+            "required": ["metric", "dimension", "period"],
+        },
+    },
+    {
+        "name": "get_schema",
+        "description": (
+            "Return the structure of the public schema: tables, columns, types, "
+            "descriptions. Call when a pre-built metric tool doesn't fit and you "
+            "need to write SQL via query_database."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "query_database",
+        "description": (
+            "Run a read-only SQL query. Returns columns, rows (max 500), and a "
+            "truncated flag. Use only when the pre-built metric tools don't cover "
+            "the question."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sql": {"type": "string", "description": "A single SQL SELECT statement."}
             },
             "required": ["sql"],
         },
@@ -95,8 +269,13 @@ TOOLS: list[dict[str, Any]] = [
 
 # Map tool names to the Python callable that implements them.
 TOOL_DISPATCH: dict[str, Callable[..., Any]] = {
-    "get_schema": lambda: get_schema(),
-    "query_database": lambda sql: query_database(sql),
+    "get_metric": get_metric,
+    "cohort_analysis": cohort_analysis,
+    "funnel_analysis": funnel_analysis,
+    "time_series_compare": time_series_compare,
+    "segment_breakdown": segment_breakdown,
+    "get_schema": get_schema,
+    "query_database": query_database,
 }
 
 
@@ -210,6 +389,11 @@ def run_agent(question: str) -> str:
 
 
 def main() -> None:
+    # Windows consoles default to cp1252 and crash on common Unicode characters
+    # (em-dashes, arrows, etc.). Force UTF-8 for stdout/stderr.
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
     if len(sys.argv) < 2:
         sys.exit('Usage: uv run python agent.py "your question"')
     question = " ".join(sys.argv[1:])

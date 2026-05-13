@@ -10,18 +10,15 @@ Run directly to execute a SQL query:
 from __future__ import annotations
 
 import datetime
-import os
 import sys
 from decimal import Decimal
 from typing import Any, TypedDict
 
 import psycopg
-from dotenv import load_dotenv
 
-load_dotenv()
+from tools._db import readonly_cursor
 
 MAX_ROWS = 500
-STATEMENT_TIMEOUT_MS = 10_000
 
 
 class QueryResult(TypedDict):
@@ -60,42 +57,30 @@ def query_database(sql: str) -> QueryResult:
             "error":     str | None,
         }
     """
-    url = os.environ.get("SUPABASE_DB_URL_READONLY")
-    if not url:
-        return {
-            "columns": [],
-            "rows": [],
-            "row_count": 0,
-            "truncated": False,
-            "error": "SUPABASE_DB_URL_READONLY not set",
-        }
-
     try:
-        with psycopg.connect(url, connect_timeout=15, prepare_threshold=None) as conn:
-            with conn.cursor() as cur:
-                cur.execute(f"SET statement_timeout = {STATEMENT_TIMEOUT_MS}")
-                cur.execute(sql)
+        with readonly_cursor() as cur:
+            cur.execute(sql)
 
-                if cur.description is None:
-                    return {
-                        "columns": [],
-                        "rows": [],
-                        "row_count": 0,
-                        "truncated": False,
-                        "error": None,
-                    }
-
-                columns = [d[0] for d in cur.description]
-                fetched = cur.fetchmany(MAX_ROWS + 1)
-                truncated = len(fetched) > MAX_ROWS
-                rows = [[_to_json_safe(v) for v in row] for row in fetched[:MAX_ROWS]]
+            if cur.description is None:
                 return {
-                    "columns": columns,
-                    "rows": rows,
-                    "row_count": len(rows),
-                    "truncated": truncated,
+                    "columns": [],
+                    "rows": [],
+                    "row_count": 0,
+                    "truncated": False,
                     "error": None,
                 }
+
+            columns = [d[0] for d in cur.description]
+            fetched = cur.fetchmany(MAX_ROWS + 1)
+            truncated = len(fetched) > MAX_ROWS
+            rows = [[_to_json_safe(v) for v in row] for row in fetched[:MAX_ROWS]]
+            return {
+                "columns": columns,
+                "rows": rows,
+                "row_count": len(rows),
+                "truncated": truncated,
+                "error": None,
+            }
     except psycopg.Error as e:
         first_line = str(e).strip().splitlines()[0] if str(e).strip() else ""
         return {
@@ -104,6 +89,14 @@ def query_database(sql: str) -> QueryResult:
             "row_count": 0,
             "truncated": False,
             "error": f"{type(e).__name__}: {first_line}",
+        }
+    except RuntimeError as e:
+        return {
+            "columns": [],
+            "rows": [],
+            "row_count": 0,
+            "truncated": False,
+            "error": str(e),
         }
 
 

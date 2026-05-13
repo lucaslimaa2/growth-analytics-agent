@@ -9,14 +9,9 @@ Run directly to print the schema as markdown:
 
 from __future__ import annotations
 
-import os
 from typing import TypedDict
 
-import psycopg
-from dotenv import load_dotenv
-
-load_dotenv()
-
+from tools._db import readonly_cursor
 
 # ============================================================================
 # Hand-written context that information_schema cannot give us
@@ -208,50 +203,45 @@ def get_schema() -> Schema:
             ]
         }
     """
-    url = os.environ.get("SUPABASE_DB_URL_POOLED")
-    if not url:
-        raise RuntimeError("SUPABASE_DB_URL_POOLED not set in environment")
+    with readonly_cursor() as cur:
+        cur.execute(
+            """
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+            ORDER BY table_name
+            """
+        )
+        table_names = [r[0] for r in cur.fetchall()]
 
-    with psycopg.connect(url, connect_timeout=15, prepare_threshold=None) as conn:
-        with conn.cursor() as cur:
+        tables: list[Table] = []
+        for t in table_names:
             cur.execute(
                 """
-                SELECT table_name
-                FROM information_schema.tables
-                WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-                ORDER BY table_name
-                """
+                SELECT column_name, data_type, is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+                ORDER BY ordinal_position
+                """,
+                (t,),
             )
-            table_names = [r[0] for r in cur.fetchall()]
-
-            tables: list[Table] = []
-            for t in table_names:
-                cur.execute(
-                    """
-                    SELECT column_name, data_type, is_nullable
-                    FROM information_schema.columns
-                    WHERE table_schema = 'public' AND table_name = %s
-                    ORDER BY ordinal_position
-                    """,
-                    (t,),
-                )
-                columns: list[Column] = []
-                for col_name, data_type, is_nullable in cur.fetchall():
-                    columns.append(
-                        {
-                            "name": col_name,
-                            "type": data_type,
-                            "nullable": is_nullable == "YES",
-                            "description": COLUMN_DESCRIPTIONS.get((t, col_name), ""),
-                        }
-                    )
-                tables.append(
+            columns: list[Column] = []
+            for col_name, data_type, is_nullable in cur.fetchall():
+                columns.append(
                     {
-                        "name": t,
-                        "description": TABLE_DESCRIPTIONS.get(t, ""),
-                        "columns": columns,
+                        "name": col_name,
+                        "type": data_type,
+                        "nullable": is_nullable == "YES",
+                        "description": COLUMN_DESCRIPTIONS.get((t, col_name), ""),
                     }
                 )
+            tables.append(
+                {
+                    "name": t,
+                    "description": TABLE_DESCRIPTIONS.get(t, ""),
+                    "columns": columns,
+                }
+            )
 
     return {"tables": tables}
 
