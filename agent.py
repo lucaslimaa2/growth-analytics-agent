@@ -27,6 +27,7 @@ from lib.logging import get_logger
 from tools.cohort import cohort_analysis
 from tools.funnel import funnel_analysis
 from tools.metrics import get_metric
+from tools.output import make_chart, make_table, summarize_findings
 from tools.schema import get_schema
 from tools.segment import segment_breakdown
 from tools.sql import query_database
@@ -68,6 +69,19 @@ Your tools, in preferred order:
     - get_schema(): introspect tables/columns.
     - query_database(sql): read-only SELECT, up to 500 rows.
 
+  OUTPUT TOOLS (use when the question benefits from a visual or structured
+  closing):
+    - make_chart(chart_type, title, x, y, ...): emit a Plotly JSON spec. Use
+      when the answer has a clear temporal trend, comparison, or distribution.
+      chart_type ∈ {line, bar, area, heatmap}. y can be a flat list of numbers
+      OR a list of {"name", "values"} for multi-series.
+    - make_table(title, columns, rows): emit a structured table when ranked
+      data or many rows beat prose.
+    - summarize_findings(insights, recommendations): your closing move.
+      Use this whenever the question is investigative ("why...", "what
+      happened...", "should we..."). Skip it for simple factual lookups
+      ("what is our MRR?").
+
 Workflow:
   1. Pick a pre-built metric tool when the question maps to one of them.
      Only fall back to query_database for ad-hoc questions the metric tools
@@ -75,7 +89,10 @@ Workflow:
   2. If you need the schema first, call get_schema. Otherwise skip it.
   3. If a query result is truncated at 500 rows, refine (add WHERE, aggregate,
      narrow time range).
-  4. Lead with the number. One or two sentences of interpretation.
+  4. When a chart or table would help the user understand, emit it before the
+     final text. End investigative answers with summarize_findings.
+  5. Lead with the number. One or two sentences of interpretation in your
+     final text answer.
 
 Constraints:
   - Read-only database. No INSERT, UPDATE, DELETE, DROP.
@@ -265,6 +282,80 @@ TOOLS: list[dict[str, Any]] = [
             "required": ["sql"],
         },
     },
+    {
+        "name": "make_chart",
+        "description": (
+            "Emit a Plotly chart spec the frontend will render. Use when the "
+            "answer benefits from a visual (trend, comparison, distribution). "
+            "y can be a flat list of numbers OR a list of {name, values} for "
+            "multi-series."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "chart_type": {
+                    "type": "string",
+                    "enum": ["line", "bar", "area", "heatmap"],
+                },
+                "title": {"type": "string"},
+                "x": {
+                    "type": "array",
+                    "items": {"type": ["string", "number"]},
+                    "description": "X-axis values (e.g. month strings, channel names).",
+                },
+                "y": {
+                    "description": "Either a flat list of numbers (single series) or a list of {name, values} dicts (multi-series / heatmap rows).",
+                },
+                "x_label": {"type": "string"},
+                "y_label": {"type": "string"},
+            },
+            "required": ["chart_type", "title", "x", "y"],
+        },
+    },
+    {
+        "name": "make_table",
+        "description": (
+            "Emit a structured table the frontend will render. Use when ranked "
+            "rows or many columns beat prose."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "columns": {"type": "array", "items": {"type": "string"}},
+                "rows": {
+                    "type": "array",
+                    "items": {"type": "array"},
+                    "description": "List of rows, each row a list matching columns in order.",
+                },
+            },
+            "required": ["title", "columns", "rows"],
+        },
+    },
+    {
+        "name": "summarize_findings",
+        "description": (
+            "Closing move for investigative questions: emit the structured "
+            "insights and recommendations. Skip this for simple factual lookups. "
+            "After calling this, return your final concise text answer."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "insights": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Short factual findings, one per bullet.",
+                },
+                "recommendations": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Concrete next actions, one per bullet.",
+                },
+            },
+            "required": ["insights", "recommendations"],
+        },
+    },
 ]
 
 # Map tool names to the Python callable that implements them.
@@ -276,6 +367,9 @@ TOOL_DISPATCH: dict[str, Callable[..., Any]] = {
     "segment_breakdown": segment_breakdown,
     "get_schema": get_schema,
     "query_database": query_database,
+    "make_chart": make_chart,
+    "make_table": make_table,
+    "summarize_findings": summarize_findings,
 }
 
 
