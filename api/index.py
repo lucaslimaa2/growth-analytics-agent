@@ -12,7 +12,7 @@ from pathlib import Path
 import psycopg
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -26,6 +26,13 @@ load_dotenv()
 from agent import run_agent  # noqa: E402
 
 app = FastAPI()
+
+
+@app.get("/")
+def root():
+    """Redirect to the chat UI. On Vercel, /index.html is served by the edge
+    from public/; locally, the StaticFiles mount below serves it from disk."""
+    return RedirectResponse(url="/index.html", status_code=302)
 
 
 class ChatRequest(BaseModel):
