@@ -1,0 +1,43 @@
+# Continuous Integration: lint + tests on every push to main and every PR.
+# A red ❌ next to a commit means something here failed.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout the repo
+        uses: actions/checkout@v4
+
+      # Install uv (Python version + dependency manager). Matches local setup.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      # Pulls Python 3.12 (per .python-version) and installs every dep from uv.lock.
+      # --frozen ensures we use exactly the locked versions, no resolution.
+      - name: Install dependencies
+        run: uv sync --frozen --all-groups
+
+      - name: Lint with ruff
+        run: uv run ruff check .
+
+      - name: Check formatting with ruff
+        run: uv run ruff format --check .
+
+      # Tests hit Supabase via the agent_ro read-only role. Connection string
+      # comes from a GitHub Actions secret (set via `gh secret set`).
+      - name: Run pytest
+        env:
+          SUPABASE_DB_URL_READONLY: ${{ secrets.SUPABASE_DB_URL_READONLY }}
+        run: uv run pytest -v
