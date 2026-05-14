@@ -1,5 +1,112 @@
-// Growth Analytics Agent — chat frontend
-// Posts to /api/chat and renders text + charts + tables + summary.
+// Growth Analytics Agent — frontend
+// On load: fetch /api/dashboard and render the fixed dashboard.
+// On submit: post to /api/chat and render text + charts + tables + summary.
+
+// ============================================================================
+// Dashboard
+// ============================================================================
+
+async function loadDashboard() {
+  const mrrEl = document.getElementById("dashboard-mrr-chart");
+  const cohortEl = document.getElementById("dashboard-cohort-chart");
+  mrrEl.innerHTML = '<div class="thinking"><span class="dot"></span><span class="dot"></span><span class="dot"></span> Loading…</div>';
+  try {
+    const resp = await fetch("/api/dashboard");
+    if (!resp.ok) throw new Error(`status ${resp.status}`);
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    renderKPIs(data.kpis || []);
+    renderDashboardChart(mrrEl, "line", data.mrr_chart);
+    renderDashboardChart(cohortEl, "heatmap", data.cohort_chart);
+    renderEvents(data.events || []);
+  } catch (err) {
+    mrrEl.innerHTML = `<div class="error">Failed to load dashboard: ${err.message}</div>`;
+    cohortEl.innerHTML = "";
+  }
+}
+
+function renderKPIs(kpis) {
+  const wrap = document.getElementById("kpis");
+  wrap.innerHTML = "";
+  kpis.forEach((k) => {
+    const card = document.createElement("div");
+    card.className = "kpi";
+    card.innerHTML = `
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-value">${k.value_fmt}</div>
+      ${renderDelta(k)}
+    `;
+    wrap.appendChild(card);
+  });
+}
+
+function renderDelta(k) {
+  if (k.delta_pct == null) return '<div class="kpi-delta neutral">vs prior month</div>';
+  const sign = k.delta_pct > 0 ? "+" : "";
+  const direction = k.delta_pct > 0 ? "up" : k.delta_pct < 0 ? "down" : "neutral";
+  // Color logic: "good_direction" tells us which way is desirable.
+  // Up + good=up → green. Down + good=down → green. Otherwise red.
+  let cls = "neutral";
+  if (direction === "up") cls = k.good_direction === "up" ? "up" : "down";
+  if (direction === "down") cls = k.good_direction === "down" ? "up" : "down";
+  return `<div class="kpi-delta ${cls}">${sign}${k.delta_pct}% vs prior month</div>`;
+}
+
+function renderDashboardChart(target, chartType, payload) {
+  if (!payload || !payload.x || !payload.x.length) {
+    target.innerHTML = '<div class="error">No data</div>';
+    return;
+  }
+  let traces;
+  if (chartType === "heatmap") {
+    traces = [{
+      type: "heatmap",
+      x: payload.x,
+      y: payload.y.map((s) => s.name),
+      z: payload.y.map((s) => s.values),
+      colorscale: "Blues",
+      hoverongaps: false,
+    }];
+  } else {
+    traces = [{
+      type: "scatter",
+      mode: "lines+markers",
+      x: payload.x,
+      y: payload.y,
+      line: { color: "#1a1a2e", width: 2 },
+      marker: { size: 5 },
+    }];
+  }
+  const layout = {
+    title: { text: payload.title, font: { size: 14, family: "Inter, system-ui, sans-serif" } },
+    margin: { l: 60, r: 20, t: 40, b: 50 },
+    plot_bgcolor: "white",
+    paper_bgcolor: "white",
+    font: { family: "Inter, system-ui, sans-serif", size: 11 },
+    xaxis: payload.x_label ? { title: { text: payload.x_label } } : {},
+    yaxis: payload.y_label ? { title: { text: payload.y_label } } : {},
+  };
+  Plotly.newPlot(target, traces, layout, { responsive: true, displaylogo: false });
+}
+
+function renderEvents(events) {
+  const wrap = document.getElementById("events-timeline");
+  if (!events.length) { wrap.innerHTML = ""; return; }
+  let html = '<h3>Annotated business events</h3>';
+  events.forEach((e) => {
+    html += `
+      <div class="event-item">
+        <div class="event-date">${e.date}</div>
+        <div class="event-desc"><strong>${e.event_type}</strong> — ${e.description}</div>
+      </div>
+    `;
+  });
+  wrap.innerHTML = html;
+}
+
+// ============================================================================
+// Chat
+// ============================================================================
 
 const historyEl = document.getElementById("history");
 const form = document.getElementById("composer");
@@ -239,3 +346,6 @@ function scrollToBottom() {
 async function safeText(resp) {
   try { return await resp.text(); } catch { return ""; }
 }
+
+// Fire the dashboard fetch as soon as the script runs.
+loadDashboard();

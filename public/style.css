@@ -29,9 +29,118 @@ html, body {
 }
 
 main {
-  max-width: 880px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 48px 24px 96px;
+}
+
+.section-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 600;
+  font-size: 22px;
+  margin: 0 0 16px;
+}
+
+#dashboard {
+  margin-bottom: 48px;
+}
+
+/* KPI row */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 900px) {
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+}
+
+.kpi {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--bg);
+}
+
+.kpi-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 6px;
+}
+
+.kpi-value {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 600;
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: -0.3px;
+}
+
+.kpi-delta {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.kpi-delta.up { color: #0a7d34; }
+.kpi-delta.down { color: #b00020; }
+.kpi-delta.neutral { color: var(--muted); }
+
+/* Dashboard charts */
+.chart-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 900px) {
+  .chart-grid { grid-template-columns: 1fr; }
+}
+
+.chart-card.large .plot {
+  min-height: 320px;
+}
+
+/* Events timeline */
+.events-timeline {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 20px;
+  background: var(--bg);
+}
+
+.events-timeline h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+
+.event-item {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.event-item:last-child { border-bottom: none; }
+
+.event-date {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-desc strong {
+  font-weight: 600;
 }
 
 header h1 {

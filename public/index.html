@@ -16,12 +16,27 @@
     <header>
       <h1>Growth Analytics Agent</h1>
       <p class="tagline">
-        Ask plain-English questions about a synthetic SaaS company's growth metrics.
-        The agent autonomously queries the database, runs analyses, and returns insights.
+        Synthetic B2B SaaS company. The dashboard below is fixed; the chat agent
+        below it answers plain-English questions by querying the data live.
       </p>
     </header>
 
+    <section id="dashboard">
+      <h2 class="section-title">Dashboard</h2>
+      <div id="kpis" class="kpi-row"></div>
+      <div class="chart-grid">
+        <div class="chart-card large">
+          <div id="dashboard-mrr-chart" class="plot"></div>
+        </div>
+        <div class="chart-card large">
+          <div id="dashboard-cohort-chart" class="plot"></div>
+        </div>
+      </div>
+      <div id="events-timeline" class="events-timeline"></div>
+    </section>
+
     <section id="chat">
+      <h2 class="section-title">Ask the agent</h2>
       <div id="history" aria-live="polite"></div>
 
       <form id="composer">

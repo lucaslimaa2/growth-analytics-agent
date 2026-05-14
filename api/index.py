@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
 from agent import run_agent  # noqa: E402
+from lib.dashboard import get_dashboard_data  # noqa: E402
 
 app = FastAPI()
 
@@ -54,6 +55,18 @@ def ping():
         )
     except Exception as exc:
         return JSONResponse({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, status_code=500)
+
+
+@app.get("/api/dashboard")
+def dashboard():
+    """Fixed dashboard payload: KPIs, charts, events. ~50ms; no agent involved."""
+    try:
+        return get_dashboard_data()
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"{type(exc).__name__}: {exc}"},
+            status_code=500,
+        )
 
 
 @app.post("/api/chat")
