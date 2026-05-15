@@ -31,9 +31,11 @@ function renderKPIs(kpis) {
   kpis.forEach((k) => {
     const card = document.createElement("div");
     card.className = "kpi";
+    const period = k.period ? `<div class="kpi-period">${k.period}</div>` : "";
     card.innerHTML = `
       <div class="kpi-label">${k.label}</div>
       <div class="kpi-value">${k.value_fmt}</div>
+      ${period}
       ${renderDelta(k)}
     `;
     wrap.appendChild(card);

@@ -15,6 +15,7 @@ from tools._db import readonly_cursor
 class KPI(TypedDict):
     label: str
     value_fmt: str
+    period: str  # e.g. "May 2026" so the reader knows what window the value covers
     delta_pct: float | None
     good_direction: str  # "up" or "down" or "neutral"
 
@@ -111,12 +112,21 @@ def _build_kpis(cur) -> list[KPI]:
     ltv_cac_latest = ltv_latest / cac_latest if (ltv_latest and cac_latest) else None
     ltv_cac_prior = prior_ltv / prior_cac if (prior_ltv and prior_cac) else None
 
+    period = _fmt_period(latest_month)
     return [
-        _kpi("MRR", float(latest[1]), float(prior[1]) if prior else None, fmt="usd", good="up"),
+        _kpi(
+            "MRR",
+            float(latest[1]),
+            float(prior[1]) if prior else None,
+            period=period,
+            fmt="usd",
+            good="up",
+        ),
         _kpi(
             "ARR",
             float(latest[2]),
             float(prior[2]) if prior else None,
+            period=period,
             fmt="usd_compact",
             good="up",
         ),
@@ -124,6 +134,7 @@ def _build_kpis(cur) -> list[KPI]:
             "MoM Growth",
             float(latest[3]),
             float(prior[3]) if prior else None,
+            period=period,
             fmt="pct",
             good="up",
             include_delta=False,  # MoM growth is itself already a delta
@@ -132,11 +143,36 @@ def _build_kpis(cur) -> list[KPI]:
             "Gross Churn",
             float(latest[4]),
             float(prior[4]) if prior else None,
+            period=period,
             fmt="pct",
             good="down",
         ),
-        _kpi("LTV / CAC", ltv_cac_latest, ltv_cac_prior, fmt="ratio", good="up"),
+        _kpi("LTV / CAC", ltv_cac_latest, ltv_cac_prior, period=period, fmt="ratio", good="up"),
     ]
+
+
+def _fmt_period(yyyy_mm: str) -> str:
+    """Turn '2026-05' into 'May 2026'."""
+    try:
+        year, month = yyyy_mm.split("-")
+        months = [
+            "",
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr",
+            "May",
+            "Jun",
+            "Jul",
+            "Aug",
+            "Sep",
+            "Oct",
+            "Nov",
+            "Dec",
+        ]
+        return f"{months[int(month)]} {year}"
+    except (ValueError, IndexError):
+        return yyyy_mm
 
 
 def _kpi(
@@ -144,6 +180,7 @@ def _kpi(
     value: float | None,
     prior: float | None,
     *,
+    period: str,
     fmt: str,
     good: str,
     include_delta: bool = True,
@@ -154,6 +191,7 @@ def _kpi(
     return {
         "label": label,
         "value_fmt": _format_value(value, fmt),
+        "period": period,
         "delta_pct": delta_pct,
         "good_direction": good,
     }
