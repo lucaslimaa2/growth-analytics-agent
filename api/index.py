@@ -37,8 +37,14 @@ def root():
     return RedirectResponse(url="/index.html", status_code=302)
 
 
+class ChatTurn(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
+
 class ChatRequest(BaseModel):
     question: str
+    history: list[ChatTurn] | None = None  # optional prior conversation
 
 
 @app.get("/api/ping")
@@ -88,8 +94,9 @@ def chat(req: ChatRequest):
     if len(q) > 2000:
         return JSONResponse({"error": "question is too long (max 2000 chars)"}, status_code=400)
 
+    history_dicts = [h.model_dump() for h in (req.history or [])]
     try:
-        result = run_agent(q)
+        result = run_agent(q, history=history_dicts)
         return result
     except Exception as exc:
         return JSONResponse(
@@ -107,9 +114,11 @@ def chat_stream(req: ChatRequest):
     if len(q) > 2000:
         return JSONResponse({"error": "question is too long (max 2000 chars)"}, status_code=400)
 
+    history_dicts = [h.model_dump() for h in (req.history or [])]
+
     def sse_generator():
         try:
-            for event in run_agent_streaming(q):
+            for event in run_agent_streaming(q, history=history_dicts):
                 yield f"data: {json.dumps(event, default=str, ensure_ascii=False)}\n\n"
         except Exception as exc:
             err = {"kind": "error", "message": f"{type(exc).__name__}: {exc}"}

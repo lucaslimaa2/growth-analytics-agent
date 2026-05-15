@@ -53,7 +53,9 @@ Your tools, in preferred order:
   math is guaranteed consistent across questions):
     - get_metric(name, period): canonical lookup. Supported names: mrr, arr,
       mom_growth, arpu, gross_churn_rate, net_churn_rate, paying_customers,
-      new_paying, ltv. Period: "YYYY-MM", "latest", or omit for full history.
+      new_paying, ltv, cac, ltv_cac. Period: "YYYY-MM", "latest", or omit for
+      full history. ALWAYS use this for ltv/cac/ltv_cac — never compute from
+      raw tables. The math is locked here and matches the dashboard.
     - cohort_analysis(cohort_by, segment_by, window_months): retention curve
       by signup-paid-month cohort. segment_by can split by channel, country,
       initial_plan, company_size, industry.
@@ -137,6 +139,8 @@ TOOLS: list[dict[str, Any]] = [
                         "paying_customers",
                         "new_paying",
                         "ltv",
+                        "cac",
+                        "ltv_cac",
                     ],
                 },
                 "period": {
@@ -493,20 +497,26 @@ def _preview(args: dict[str, Any], max_len: int = 200) -> dict[str, Any]:
 RENDERABLE_TOOLS = {"make_chart", "make_table", "summarize_findings"}
 
 
-def run_agent(question: str) -> dict[str, Any]:
-    """Run one full agentic turn.
+def run_agent(
+    question: str,
+    history: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    """Run one full agentic turn, optionally with prior chat history.
+
+    Args:
+        question: the new user question.
+        history: prior conversation as a list of {role, content} dicts where
+                 role is "user" or "assistant" and content is plain text.
+                 Tool calls/results from prior turns are NOT preserved (we only
+                 keep final assistant text), so the agent will re-query if it
+                 needs the same data again.
 
     Returns:
-        {
-          "answer":     str  - the final text answer,
-          "outputs":    list - structured outputs to render in the UI,
-                              each shaped {"kind": "chart"|"table"|"summary", "data": {...}},
-          "iterations": int  - how many model calls happened,
-          "stop_reason": str - terminal stop_reason from the model,
-        }
+        {answer, outputs, iterations, stop_reason}
     """
     client = anthropic.Anthropic()
-    messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
+    messages: list[dict[str, Any]] = list(history or [])
+    messages.append({"role": "user", "content": question})
     renderable_outputs: list[dict[str, Any]] = []
 
     log.info("agent_start", extra={"question": question, "model": MODEL})
@@ -615,8 +625,11 @@ def run_agent(question: str) -> dict[str, Any]:
 # ============================================================================
 
 
-def run_agent_streaming(question: str) -> Iterator[dict[str, Any]]:
-    """Run the same agent loop, but yield events as they happen.
+def run_agent_streaming(
+    question: str,
+    history: list[dict[str, str]] | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Streaming variant of run_agent. Same args, yields events incrementally.
 
     Event shapes:
         {"kind": "iteration_start", "iteration": int}
@@ -628,7 +641,8 @@ def run_agent_streaming(question: str) -> Iterator[dict[str, Any]]:
         {"kind": "error",           "message": str}
     """
     client = anthropic.Anthropic()
-    messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
+    messages: list[dict[str, Any]] = list(history or [])
+    messages.append({"role": "user", "content": question})
 
     log.info("agent_stream_start", extra={"question": question, "model": MODEL})
 

@@ -109,6 +109,12 @@ function renderEvents(events) {
 // ============================================================================
 
 const historyEl = document.getElementById("history");
+
+// Conversation memory: persists across questions within this page session.
+// Sent to the backend on each request so the agent can refer to prior turns.
+// Capped to the last MAX_HISTORY_TURNS to keep token costs predictable.
+const MAX_HISTORY_TURNS = 20;
+const conversationHistory = []; // [{role: "user"|"assistant", content: str}]
 const form = document.getElementById("composer");
 const input = document.getElementById("question");
 const sendBtn = document.getElementById("send");
@@ -133,11 +139,15 @@ form.addEventListener("submit", async (e) => {
   // Build the agent message bubble up-front; we'll fill it as events arrive.
   const agentMsg = startAgentMessage();
 
+  // Send the last N turns as conversation context.
+  const history = conversationHistory.slice(-MAX_HISTORY_TURNS);
+  conversationHistory.push({ role: "user", content: question });
+
   try {
     const resp = await fetch("/api/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, history }),
     });
 
     if (!resp.ok) {
@@ -279,8 +289,16 @@ function finalizeAgentMessage(agentMsg, errorMsg, isError) {
     err.className = "error";
     err.textContent = errorMsg;
     agentMsg.msg.appendChild(err);
-  } else if (!agentMsg.textBuffer && agentMsg.outputs.children.length === 0) {
-    agentMsg.bubble.textContent = "(agent returned no text)";
+    // Errors are not added to conversation history.
+  } else {
+    if (!agentMsg.textBuffer && agentMsg.outputs.children.length === 0) {
+      agentMsg.bubble.textContent = "(agent returned no text)";
+    }
+    // Save the assistant's final text into conversation history so future
+    // turns can refer to it.
+    if (agentMsg.textBuffer.trim()) {
+      conversationHistory.push({ role: "assistant", content: agentMsg.textBuffer });
+    }
   }
   scrollToBottom();
 }

@@ -14,6 +14,8 @@ Supported metric names:
     paying_customers  - count of active paying customers at end of month
     new_paying        - new paying customers this month
     ltv               - lifetime value (USD), computed as arpu / gross_churn_rate
+    cac               - blended CAC (USD): avg cac_usd across paid channels for that month
+    ltv_cac           - LTV / CAC ratio (same formula as the dashboard)
 
 Period can be:
     None              - return all 24 months
@@ -44,7 +46,7 @@ DIRECT_COLUMNS: dict[str, str] = {
     "paying_customers": "paying_customers",
 }
 
-DERIVED = {"ltv", "new_paying"}
+DERIVED = {"ltv", "new_paying", "cac", "ltv_cac"}
 
 ALL_METRICS = set(DIRECT_COLUMNS) | DERIVED
 
@@ -71,6 +73,8 @@ _UNITS: dict[str, str] = {
     "paying_customers": "count",
     "new_paying": "count",
     "ltv": "USD",
+    "cac": "USD",
+    "ltv_cac": "ratio",
 }
 
 
@@ -120,6 +124,10 @@ def get_metric(name: str, period: str | tuple[str, str] | None = None) -> Metric
                 points = _compute_new_paying(cur, start, end)
             elif name == "ltv":
                 points = _compute_ltv(cur, start, end)
+            elif name == "cac":
+                points = _compute_cac(cur, start, end)
+            elif name == "ltv_cac":
+                points = _compute_ltv_cac(cur, start, end)
             else:
                 points = []
     except Exception as exc:  # noqa: BLE001
@@ -229,6 +237,57 @@ def _compute_ltv(cur: Any, start: str | None, end: str | None) -> list[MetricPoi
             ltv = round(float(arpu) / (float(churn_rate) / 100), 2)
         points.append({"month": month, "value": ltv})
     return points
+
+
+def _compute_cac(cur: Any, start: str | None, end: str | None) -> list[MetricPoint]:
+    """Blended CAC: avg(cac_usd) across paid channels for each month.
+
+    Same definition the dashboard uses. NULL when no conversions for the period.
+    """
+    extra = "cac_usd IS NOT NULL"
+    args: tuple[Any, ...] = ()
+    if start == "latest":
+        where = f"WHERE month = (SELECT MAX(month) FROM cac_by_channel) AND {extra}"
+    elif start and end and start == end:
+        where = f"WHERE month = %s AND {extra}"
+        args = (start,)
+    elif start and end:
+        where = f"WHERE month BETWEEN %s AND %s AND {extra}"
+        args = (start, end)
+    else:
+        where = f"WHERE {extra}"
+
+    cur.execute(
+        f"""
+        SELECT month, AVG(cac_usd) AS cac
+        FROM cac_by_channel
+        {where}
+        GROUP BY month
+        ORDER BY month
+        """,
+        args,
+    )
+    return [
+        {"month": r[0], "value": round(float(r[1]), 2) if r[1] is not None else None}
+        for r in cur.fetchall()
+    ]
+
+
+def _compute_ltv_cac(cur: Any, start: str | None, end: str | None) -> list[MetricPoint]:
+    """LTV / CAC ratio per month. Uses the same LTV and CAC definitions as the
+    dashboard so the agent and the dashboard never disagree."""
+    ltv_points = {p["month"]: p["value"] for p in _compute_ltv(cur, start, end)}
+    cac_points = {p["month"]: p["value"] for p in _compute_cac(cur, start, end)}
+    months = sorted(set(ltv_points) | set(cac_points))
+    out: list[MetricPoint] = []
+    for m in months:
+        ltv = ltv_points.get(m)
+        cac = cac_points.get(m)
+        if ltv is None or cac is None or cac == 0:
+            out.append({"month": m, "value": None})
+        else:
+            out.append({"month": m, "value": round(ltv / cac, 2)})
+    return out
 
 
 if __name__ == "__main__":
