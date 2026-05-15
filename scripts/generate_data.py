@@ -220,8 +220,11 @@ def generate_customers() -> pd.DataFrame:
 
 
 def _churn_event(plan: str, m_idx: int) -> tuple[float, dict[str, float]]:
-    """Return (probability of any lifecycle event this month, weights for {churn,upgrade,downgrade})."""
-    base = {"Starter": 0.045, "Pro": 0.035, "Business": 0.020}.get(plan, 0.030)
+    """Return (probability of any lifecycle event this month, weights for {churn,upgrade,downgrade}).
+
+    Base monthly hazards tuned to realistic SMB SaaS norms (3-5% gross churn).
+    """
+    base = {"Starter": 0.060, "Pro": 0.050, "Business": 0.035}.get(plan, 0.045)
 
     if plan == "Pro" and m_idx in (PRO_PRICE_HIKE_MONTH, PRO_PRICE_HIKE_MONTH + 1):
         base += 0.06
@@ -463,16 +466,18 @@ def generate_marketing_spend() -> pd.DataFrame:
     for d in days:
         m_idx = date_to_month_idx(d)
         for channel in PAID_CHANNELS:
+            # Daily spend tuned so resulting CAC lands in realistic SaaS ranges
+            # ($300-$700 per paid customer) rather than the toy ~$30-50 values.
             if channel == "paid_search":
-                base = 1300.0 / 30  # $43/day baseline
+                base = 700.0  # ~$21k/month → CAC ~$500-700 on ~30-40 conversions/mo
                 if m_idx in (CAC_SPIKE_MONTH, CAC_SPIKE_MONTH + 1, CAC_SPIKE_MONTH + 2):
-                    base *= 1.45
+                    base *= 1.45  # planted CAC spike pattern
                 elif m_idx >= PAID_SEARCH_CAC_PARTIAL_RECOVERY_MONTH:
                     base *= 1.15
             elif channel == "paid_social":
-                base = 28.0
+                base = 500.0
             else:  # outbound
-                base = 18.0
+                base = 400.0
 
             spend = max(0.0, base + np_rng.normal(0, base * 0.10))
             impressions = int(spend * py_rng.uniform(70, 110))
