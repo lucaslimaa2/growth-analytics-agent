@@ -24,6 +24,8 @@ import anthropic
 from dotenv import load_dotenv
 
 from lib.logging import get_logger
+from tools.anomaly import anomaly_detection
+from tools.benchmarks import compare_to_benchmarks
 from tools.cohort import cohort_analysis
 from tools.funnel import funnel_analysis
 from tools.metrics import get_metric
@@ -64,6 +66,15 @@ Your tools, in preferred order:
       showing which segment drove the change.
     - segment_breakdown(metric, dimension, period): split a single metric
       by a dimension for one period.
+
+  ANALYTICAL TOOLS (reach for these when the question goes beyond a number):
+    - anomaly_detection(metric, lookback_days): rolling Z-score outliers on
+      daily_metrics. Call when the user asks about "unusual" days, outliers,
+      "worst day", "what happened around X", or "any anomalies in Y".
+    - compare_to_benchmarks(metric, value): pin a value against SaaS industry
+      norms. Call when the user asks "is X good?", "how does this compare?",
+      "what's a healthy/normal Y?". Supported metrics: gross_churn_rate,
+      net_churn_rate, mom_growth, ltv_cac, cac_payback_months, arpu.
 
   GENERAL-PURPOSE TOOLS (fallback when no metric tool fits):
     - get_schema(): introspect tables/columns.
@@ -259,6 +270,73 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "anomaly_detection",
+        "description": (
+            "Find outlier days for a daily metric using rolling Z-scores. Use for "
+            "questions about 'unusual' days, outliers, 'worst/best day for X', or "
+            "'what happened around <date>'. Returns flagged days with severity, "
+            "value, expected value, and z-score."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string",
+                    "enum": [
+                        "new_signups",
+                        "new_activations",
+                        "new_paid",
+                        "churned",
+                        "gross_new_mrr",
+                        "expansion_mrr",
+                        "contraction_mrr",
+                        "churn_mrr",
+                        "net_new_mrr",
+                        "dau",
+                        "mau",
+                        "total_paying",
+                    ],
+                },
+                "lookback_days": {
+                    "type": "integer",
+                    "description": "Days back to scan (default 180, min 30).",
+                    "default": 180,
+                },
+            },
+            "required": ["metric"],
+        },
+    },
+    {
+        "name": "compare_to_benchmarks",
+        "description": (
+            "Compare a metric value to industry SaaS benchmarks. Use when the user "
+            "asks 'is X good?', 'how does Y compare?', or 'what's healthy/normal?'. "
+            "Returns a tier (excellent/typical/concerning/etc.), a verdict, and the "
+            "full benchmark table for context."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string",
+                    "enum": [
+                        "gross_churn_rate",
+                        "net_churn_rate",
+                        "mom_growth",
+                        "ltv_cac",
+                        "cac_payback_months",
+                        "arpu",
+                    ],
+                },
+                "value": {
+                    "type": "number",
+                    "description": "The value to compare against benchmarks.",
+                },
+            },
+            "required": ["metric", "value"],
+        },
+    },
+    {
         "name": "get_schema",
         "description": (
             "Return the structure of the public schema: tables, columns, types, "
@@ -365,6 +443,8 @@ TOOL_DISPATCH: dict[str, Callable[..., Any]] = {
     "funnel_analysis": funnel_analysis,
     "time_series_compare": time_series_compare,
     "segment_breakdown": segment_breakdown,
+    "anomaly_detection": anomaly_detection,
+    "compare_to_benchmarks": compare_to_benchmarks,
     "get_schema": get_schema,
     "query_database": query_database,
     "make_chart": make_chart,
