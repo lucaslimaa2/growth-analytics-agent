@@ -5,6 +5,7 @@ Routes:
   POST /api/chat  - run the agent on a user question; returns answer + outputs
 """
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -12,7 +13,7 @@ from pathlib import Path
 import psycopg
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -23,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 load_dotenv()
 
-from agent import run_agent  # noqa: E402
+from agent import run_agent, run_agent_streaming  # noqa: E402
 from lib.dashboard import get_dashboard_data  # noqa: E402
 
 app = FastAPI()
@@ -95,6 +96,33 @@ def chat(req: ChatRequest):
             {"error": f"{type(exc).__name__}: {exc}"},
             status_code=500,
         )
+
+
+@app.post("/api/chat/stream")
+def chat_stream(req: ChatRequest):
+    """SSE variant of /api/chat: streams events as the agent works."""
+    q = (req.question or "").strip()
+    if not q:
+        return JSONResponse({"error": "question is empty"}, status_code=400)
+    if len(q) > 2000:
+        return JSONResponse({"error": "question is too long (max 2000 chars)"}, status_code=400)
+
+    def sse_generator():
+        try:
+            for event in run_agent_streaming(q):
+                yield f"data: {json.dumps(event, default=str, ensure_ascii=False)}\n\n"
+        except Exception as exc:
+            err = {"kind": "error", "message": f"{type(exc).__name__}: {exc}"}
+            yield f"data: {json.dumps(err)}\n\n"
+
+    return StreamingResponse(
+        sse_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # disable proxy buffering
+        },
+    )
 
 
 # Local-dev convenience: serve the static frontend from public/ so `uvicorn`

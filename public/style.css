@@ -376,6 +376,73 @@ table tr:last-child td {
   color: var(--accent);
 }
 
+/* Tool-call status pills (streaming) */
+.tool-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.tool-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bubble-agent);
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--muted);
+}
+
+.tool-pill .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.tool-pill.running .dot {
+  background: #f59e0b;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.tool-pill.done {
+  background: rgba(10, 125, 52, 0.08);
+  color: #0a7d34;
+}
+
+.tool-pill.done .dot { background: #0a7d34; }
+
+.tool-pill.error {
+  background: rgba(176, 0, 32, 0.08);
+  color: var(--error);
+}
+
+.tool-pill.error .dot { background: var(--error); }
+
+.tool-pill .tool-name {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.bubble.streaming::after {
+  content: "▍";
+  color: var(--muted);
+  animation: blink 1s steps(2, start) infinite;
+  margin-left: 2px;
+}
+
+.bubble.streaming:empty {
+  background: transparent;
+  padding: 4px 0;
+}
+
+@keyframes blink {
+  to { visibility: hidden; }
+}
+
 /* Loading / thinking */
 .thinking {
   display: inline-flex;

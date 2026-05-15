@@ -130,37 +130,166 @@ form.addEventListener("submit", async (e) => {
   input.value = "";
   setSending(true);
 
-  const thinkingEl = appendThinking();
+  // Build the agent message bubble up-front; we'll fill it as events arrive.
+  const agentMsg = startAgentMessage();
 
   try {
-    const resp = await fetch("/api/chat", {
+    const resp = await fetch("/api/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question }),
     });
 
-    thinkingEl.remove();
-
     if (!resp.ok) {
       const errText = await safeText(resp);
-      appendError(`Error ${resp.status}: ${errText || resp.statusText}`);
+      finalizeAgentMessage(agentMsg, `Error ${resp.status}: ${errText || resp.statusText}`, true);
       return;
     }
 
-    const data = await resp.json();
-    if (data.error) {
-      appendError(data.error);
-      return;
-    }
-    appendAgentMessage(data);
+    await consumeSSE(resp, agentMsg);
   } catch (err) {
-    thinkingEl.remove();
-    appendError(`Network error: ${err.message}`);
+    finalizeAgentMessage(agentMsg, `Network error: ${err.message}`, true);
   } finally {
     setSending(false);
     input.focus();
   }
 });
+
+// ============================================================================
+// SSE consumer: read events from the streaming endpoint and update the UI
+// ============================================================================
+
+async function consumeSSE(resp, agentMsg) {
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE events are separated by a blank line (\n\n).
+    let idx;
+    while ((idx = buffer.indexOf("\n\n")) >= 0) {
+      const chunk = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      const line = chunk.startsWith("data: ") ? chunk.slice(6) : chunk;
+      if (!line) continue;
+      let event;
+      try { event = JSON.parse(line); } catch { continue; }
+      handleEvent(event, agentMsg);
+    }
+  }
+}
+
+function handleEvent(event, agentMsg) {
+  switch (event.kind) {
+    case "iteration_start":
+      // Cosmetic — could show "step N" badges. Skipping for now.
+      break;
+    case "tool_call":
+      addToolPill(agentMsg, event.tool, "running");
+      break;
+    case "tool_result":
+      markToolPill(agentMsg, event.tool, event.ok ? "done" : "error", event.duration_ms);
+      break;
+    case "text_delta":
+      appendDeltaText(agentMsg, event.text);
+      break;
+    case "output": {
+      const el = renderOutput(event.output);
+      if (el) agentMsg.outputs.appendChild(el);
+      scrollToBottom();
+      break;
+    }
+    case "done":
+      finalizeAgentMessage(agentMsg);
+      break;
+    case "error":
+      finalizeAgentMessage(agentMsg, event.message, true);
+      break;
+  }
+}
+
+// ============================================================================
+// Agent message DOM helpers (streaming-aware)
+// ============================================================================
+
+function startAgentMessage() {
+  const msg = document.createElement("div");
+  msg.className = "message agent";
+
+  const tools = document.createElement("div");
+  tools.className = "tool-pills";
+  msg.appendChild(tools);
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble streaming";
+  msg.appendChild(bubble);
+
+  const outputs = document.createElement("div");
+  outputs.className = "outputs";
+  msg.appendChild(outputs);
+
+  historyEl.appendChild(msg);
+  scrollToBottom();
+  return { msg, tools, bubble, outputs, textBuffer: "" };
+}
+
+function appendDeltaText(agentMsg, text) {
+  agentMsg.textBuffer += text;
+  agentMsg.bubble.innerHTML = formatMarkdownish(agentMsg.textBuffer);
+  scrollToBottom();
+}
+
+function addToolPill(agentMsg, toolName, state) {
+  const pill = document.createElement("div");
+  pill.className = `tool-pill ${state}`;
+  pill.dataset.tool = toolName;
+  pill.innerHTML = `<span class="dot"></span> <span class="tool-name">${toolName}</span><span class="tool-state">…</span>`;
+  agentMsg.tools.appendChild(pill);
+  scrollToBottom();
+}
+
+function markToolPill(agentMsg, toolName, state, durationMs) {
+  // Mark the most recent pill for this tool that's still running.
+  const pills = agentMsg.tools.querySelectorAll(`.tool-pill[data-tool="${toolName}"]`);
+  for (let i = pills.length - 1; i >= 0; i--) {
+    if (pills[i].classList.contains("running")) {
+      pills[i].classList.remove("running");
+      pills[i].classList.add(state);
+      const stateEl = pills[i].querySelector(".tool-state");
+      if (stateEl) {
+        if (state === "done") {
+          stateEl.textContent = ` · ${formatDuration(durationMs)}`;
+        } else {
+          stateEl.textContent = " · failed";
+        }
+      }
+      break;
+    }
+  }
+}
+
+function finalizeAgentMessage(agentMsg, errorMsg, isError) {
+  agentMsg.bubble.classList.remove("streaming");
+  if (isError) {
+    const err = document.createElement("div");
+    err.className = "error";
+    err.textContent = errorMsg;
+    agentMsg.msg.appendChild(err);
+  } else if (!agentMsg.textBuffer && agentMsg.outputs.children.length === 0) {
+    agentMsg.bubble.textContent = "(agent returned no text)";
+  }
+  scrollToBottom();
+}
+
+function formatDuration(ms) {
+  if (ms == null) return "";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
 
 function setSending(isSending) {
   sendBtn.disabled = isSending;

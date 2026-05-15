@@ -16,7 +16,7 @@ import json
 import os
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -527,6 +527,116 @@ def run_agent(question: str) -> dict[str, Any]:
         "iterations": MAX_ITERATIONS,
         "stop_reason": "iteration_cap",
     }
+
+
+# ============================================================================
+# Streaming variant: yields events to the caller instead of returning a dict.
+# Used by POST /api/chat/stream.
+# ============================================================================
+
+
+def run_agent_streaming(question: str) -> Iterator[dict[str, Any]]:
+    """Run the same agent loop, but yield events as they happen.
+
+    Event shapes:
+        {"kind": "iteration_start", "iteration": int}
+        {"kind": "tool_call",       "tool": str, "args_preview": dict}
+        {"kind": "tool_result",     "tool": str, "duration_ms": int, "ok": bool}
+        {"kind": "output",          "output": {"kind": "chart"|"table"|"summary", "data": ...}}
+        {"kind": "text_delta",      "text": str}
+        {"kind": "done",            "iterations": int, "stop_reason": str}
+        {"kind": "error",           "message": str}
+    """
+    client = anthropic.Anthropic()
+    messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
+
+    log.info("agent_stream_start", extra={"question": question, "model": MODEL})
+
+    for iteration in range(1, MAX_ITERATIONS + 1):
+        yield {"kind": "iteration_start", "iteration": iteration}
+
+        with client.messages.stream(
+            model=MODEL,
+            max_tokens=MAX_TOKENS,
+            system=[
+                {
+                    "type": "text",
+                    "text": SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            tools=TOOLS,
+            messages=messages,
+        ) as stream:
+            # Stream user-facing text tokens as they arrive.
+            for event in stream:
+                if event.type == "content_block_delta" and event.delta.type == "text_delta":
+                    yield {"kind": "text_delta", "text": event.delta.text}
+
+            response = stream.get_final_message()
+
+        log.info(
+            "agent_iteration",
+            extra={
+                "iteration": iteration,
+                "stop_reason": response.stop_reason,
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
+            },
+        )
+
+        if response.stop_reason == "end_turn":
+            yield {"kind": "done", "iterations": iteration, "stop_reason": "end_turn"}
+            return
+
+        if response.stop_reason == "tool_use":
+            messages.append({"role": "assistant", "content": response.content})
+            tool_results = []
+            for block in response.content:
+                if block.type != "tool_use":
+                    continue
+                yield {
+                    "kind": "tool_call",
+                    "tool": block.name,
+                    "args_preview": _preview(block.input),
+                }
+                t0 = time.monotonic()
+                result_json = execute_tool(block.name, block.input)
+                elapsed_ms = int((time.monotonic() - t0) * 1000)
+                parsed_ok = True
+                try:
+                    parsed = json.loads(result_json)
+                    parsed_ok = "error" not in parsed or not parsed["error"]
+                except json.JSONDecodeError:
+                    parsed = None
+                yield {
+                    "kind": "tool_result",
+                    "tool": block.name,
+                    "duration_ms": elapsed_ms,
+                    "ok": parsed_ok,
+                }
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": result_json,
+                    }
+                )
+                if parsed is not None and block.name in RENDERABLE_TOOLS:
+                    kind = {
+                        "make_chart": "chart",
+                        "make_table": "table",
+                        "summarize_findings": "summary",
+                    }[block.name]
+                    yield {"kind": "output", "output": {"kind": kind, "data": parsed}}
+
+            messages.append({"role": "user", "content": tool_results})
+            continue
+
+        yield {"kind": "done", "iterations": iteration, "stop_reason": response.stop_reason}
+        return
+
+    yield {"kind": "done", "iterations": MAX_ITERATIONS, "stop_reason": "iteration_cap"}
 
 
 def main() -> None:
