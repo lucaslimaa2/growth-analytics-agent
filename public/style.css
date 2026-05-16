@@ -385,6 +385,15 @@ table tr:last-child td {
   color: var(--accent);
 }
 
+/* Per-question cost footer */
+.cost-footer {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-family: monospace;
+  letter-spacing: 0.3px;
+}
+
 /* Tool-call status pills (streaming) */
 .tool-pills {
   display: flex;

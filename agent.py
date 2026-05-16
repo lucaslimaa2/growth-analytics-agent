@@ -43,6 +43,23 @@ MODEL = "claude-haiku-4-5"
 MAX_TOKENS = 4096
 MAX_ITERATIONS = 10
 
+# Haiku 4.5 pricing (USD per million tokens), used for per-question cost logging.
+PRICE_INPUT = 1.00
+PRICE_OUTPUT = 5.00
+PRICE_CACHE_WRITE = 1.25
+PRICE_CACHE_READ = 0.10
+
+
+def _cost_usd(in_tok: int, out_tok: int, cw_tok: int, cr_tok: int) -> float:
+    return round(
+        in_tok * PRICE_INPUT / 1_000_000
+        + out_tok * PRICE_OUTPUT / 1_000_000
+        + cw_tok * PRICE_CACHE_WRITE / 1_000_000
+        + cr_tok * PRICE_CACHE_READ / 1_000_000,
+        6,
+    )
+
+
 SYSTEM_PROMPT = """You are a growth analytics agent for a B2B SaaS company.
 You answer questions about growth metrics by autonomously querying the company's
 Postgres database, then returning concise, numbers-first insights.
@@ -524,6 +541,12 @@ def run_agent(
     messages: list[dict[str, Any]] = list(history or [])
     messages.append({"role": "user", "content": question})
     renderable_outputs: list[dict[str, Any]] = []
+    totals = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_write_tokens": 0,
+        "cache_read_tokens": 0,
+    }
 
     log.info("agent_start", extra={"question": question, "model": MODEL})
 
@@ -535,12 +558,21 @@ def run_agent(
                 {
                     "type": "text",
                     "text": SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral"},
+                    # 1-hour TTL: stays cached across a typical user session.
+                    # Write cost 2x base input, but pays off after ~3 reads.
+                    "cache_control": {"type": "ephemeral", "ttl": "1h"},
                 }
             ],
             tools=TOOLS,
             messages=messages,
         )
+
+        cw = getattr(response.usage, "cache_creation_input_tokens", 0)
+        cr = getattr(response.usage, "cache_read_input_tokens", 0)
+        totals["input_tokens"] += response.usage.input_tokens
+        totals["output_tokens"] += response.usage.output_tokens
+        totals["cache_write_tokens"] += cw
+        totals["cache_read_tokens"] += cr
 
         log.info(
             "agent_iteration",
@@ -549,20 +581,28 @@ def run_agent(
                 "stop_reason": response.stop_reason,
                 "input_tokens": response.usage.input_tokens,
                 "output_tokens": response.usage.output_tokens,
-                "cache_read_tokens": getattr(response.usage, "cache_read_input_tokens", 0),
-                "cache_write_tokens": getattr(response.usage, "cache_creation_input_tokens", 0),
+                "cache_read_tokens": cr,
+                "cache_write_tokens": cw,
             },
         )
 
         if response.stop_reason == "end_turn":
             text_blocks = [b.text for b in response.content if b.type == "text"]
             final = "\n".join(text_blocks).strip()
+            cost = _cost_usd(
+                totals["input_tokens"],
+                totals["output_tokens"],
+                totals["cache_write_tokens"],
+                totals["cache_read_tokens"],
+            )
             log.info(
                 "agent_done",
                 extra={
                     "iterations": iteration,
                     "answer_chars": len(final),
                     "renderable_count": len(renderable_outputs),
+                    "cost_usd": cost,
+                    **totals,
                 },
             )
             return {
@@ -570,6 +610,8 @@ def run_agent(
                 "outputs": renderable_outputs,
                 "iterations": iteration,
                 "stop_reason": "end_turn",
+                "cost_usd": cost,
+                "tokens": totals,
             }
 
         if response.stop_reason == "tool_use":
@@ -649,6 +691,12 @@ def run_agent_streaming(
     client = anthropic.Anthropic()
     messages: list[dict[str, Any]] = list(history or [])
     messages.append({"role": "user", "content": question})
+    totals = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_write_tokens": 0,
+        "cache_read_tokens": 0,
+    }
 
     log.info("agent_stream_start", extra={"question": question, "model": MODEL})
 
@@ -662,7 +710,9 @@ def run_agent_streaming(
                 {
                     "type": "text",
                     "text": SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral"},
+                    # 1-hour TTL: stays cached across a typical user session.
+                    # Write cost 2x base input, but pays off after ~3 reads.
+                    "cache_control": {"type": "ephemeral", "ttl": "1h"},
                 }
             ],
             tools=TOOLS,
@@ -675,6 +725,13 @@ def run_agent_streaming(
 
             response = stream.get_final_message()
 
+        cw = getattr(response.usage, "cache_creation_input_tokens", 0)
+        cr = getattr(response.usage, "cache_read_input_tokens", 0)
+        totals["input_tokens"] += response.usage.input_tokens
+        totals["output_tokens"] += response.usage.output_tokens
+        totals["cache_write_tokens"] += cw
+        totals["cache_read_tokens"] += cr
+
         log.info(
             "agent_iteration",
             extra={
@@ -682,11 +739,26 @@ def run_agent_streaming(
                 "stop_reason": response.stop_reason,
                 "input_tokens": response.usage.input_tokens,
                 "output_tokens": response.usage.output_tokens,
+                "cache_write_tokens": cw,
+                "cache_read_tokens": cr,
             },
         )
 
         if response.stop_reason == "end_turn":
-            yield {"kind": "done", "iterations": iteration, "stop_reason": "end_turn"}
+            cost = _cost_usd(
+                totals["input_tokens"],
+                totals["output_tokens"],
+                totals["cache_write_tokens"],
+                totals["cache_read_tokens"],
+            )
+            log.info("agent_done", extra={"iterations": iteration, "cost_usd": cost, **totals})
+            yield {
+                "kind": "done",
+                "iterations": iteration,
+                "stop_reason": "end_turn",
+                "cost_usd": cost,
+                "tokens": totals,
+            }
             return
 
         if response.stop_reason == "tool_use":

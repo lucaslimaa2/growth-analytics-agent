@@ -217,6 +217,8 @@ function handleEvent(event, agentMsg) {
     }
     case "done":
       finalizeAgentMessage(agentMsg);
+      if (event.cost_usd != null)
+        addCostFooter(agentMsg, event.cost_usd, event.iterations, event.tokens);
       break;
     case "error":
       finalizeAgentMessage(agentMsg, event.message, true);
@@ -309,6 +311,24 @@ function formatDuration(ms) {
   if (ms == null) return "";
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function addCostFooter(agentMsg, costUsd, iterations, tokens) {
+  const footer = document.createElement("div");
+  footer.className = "cost-footer";
+  const costStr = costUsd < 0.01 ? `${(costUsd * 100).toFixed(2)}¢` : `$${costUsd.toFixed(3)}`;
+  let txt = `${iterations} iteration${iterations !== 1 ? "s" : ""} · ${costStr}`;
+  if (tokens) {
+    const cacheNote =
+      tokens.cache_read_tokens > 0
+        ? ` · cache hit (${tokens.cache_read_tokens.toLocaleString()} tok read)`
+        : tokens.cache_write_tokens > 0
+          ? ` · cache write (${tokens.cache_write_tokens.toLocaleString()} tok)`
+          : "";
+    txt += cacheNote;
+  }
+  footer.textContent = txt;
+  agentMsg.msg.appendChild(footer);
 }
 
 function setSending(isSending) {

@@ -130,6 +130,18 @@ CREATE TABLE cohort_retention (
 );
 
 -- ============================================================================
+-- Rate limiting log: tracks recent per-IP requests so we can throttle abuse.
+-- Created separately (IF NOT EXISTS) because the data-DROP block above must
+-- not wipe the rate-limit history every time we reload synthetic data.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS rate_limits (
+    ip TEXT NOT NULL,
+    ts TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS rate_limits_ip_ts ON rate_limits(ip, ts DESC);
+
+-- ============================================================================
 -- Row Level Security: enabled with no policies, blocks PostgREST anon access.
 -- The postgres role used by our loader and agent bypasses RLS automatically.
 -- ============================================================================

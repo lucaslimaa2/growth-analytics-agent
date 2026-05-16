@@ -12,7 +12,7 @@ from pathlib import Path
 
 import psycopg
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -26,8 +26,37 @@ load_dotenv()
 
 from agent import run_agent, run_agent_streaming  # noqa: E402
 from lib.dashboard import get_dashboard_data  # noqa: E402
+from lib.rate_limit import check_rate_limit  # noqa: E402
 
 app = FastAPI()
+
+
+def _client_ip(request: Request) -> str:
+    """Get the originating client IP, honoring Vercel's proxy headers."""
+    # Vercel/Cloudflare set x-forwarded-for; take the first hop.
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _rate_limit_response(ip: str):
+    """Return a 429 response if the IP is over the rate limit, else None."""
+    result = check_rate_limit(ip)
+    if not result.allowed:
+        return JSONResponse(
+            {
+                "error": "rate_limited",
+                "message": (
+                    f"You've hit the per-IP rate limit ({result.count} requests in 60s). "
+                    f"Try again in {result.retry_after} seconds."
+                ),
+                "retry_after": result.retry_after,
+            },
+            status_code=429,
+            headers={"Retry-After": str(result.retry_after)},
+        )
+    return None
 
 
 @app.get("/")
@@ -77,7 +106,7 @@ def dashboard():
 
 
 @app.post("/api/chat")
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, request: Request):
     """Run the agent on a single user question.
 
     Returns:
@@ -94,6 +123,10 @@ def chat(req: ChatRequest):
     if len(q) > 2000:
         return JSONResponse({"error": "question is too long (max 2000 chars)"}, status_code=400)
 
+    rl = _rate_limit_response(_client_ip(request))
+    if rl is not None:
+        return rl
+
     history_dicts = [h.model_dump() for h in (req.history or [])]
     try:
         result = run_agent(q, history=history_dicts)
@@ -106,13 +139,17 @@ def chat(req: ChatRequest):
 
 
 @app.post("/api/chat/stream")
-def chat_stream(req: ChatRequest):
+def chat_stream(req: ChatRequest, request: Request):
     """SSE variant of /api/chat: streams events as the agent works."""
     q = (req.question or "").strip()
     if not q:
         return JSONResponse({"error": "question is empty"}, status_code=400)
     if len(q) > 2000:
         return JSONResponse({"error": "question is too long (max 2000 chars)"}, status_code=400)
+
+    rl = _rate_limit_response(_client_ip(request))
+    if rl is not None:
+        return rl
 
     history_dicts = [h.model_dump() for h in (req.history or [])]
 
