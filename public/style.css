@@ -152,6 +152,24 @@ main {
   font-weight: 600;
 }
 
+.back-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 32px;
+  font-size: 14px;
+}
+
+.back-links a {
+  color: var(--muted);
+  text-decoration: none;
+  width: fit-content;
+}
+
+.back-links a:hover {
+  color: var(--accent);
+}
+
 header h1 {
   font-family: 'Playfair Display', Georgia, serif;
   font-weight: 700;
