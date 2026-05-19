@@ -1,6 +1,6 @@
 # Growth Analytics Agent
 
-A single-page web app that combines a fixed dashboard of SaaS growth metrics with an agentic chat that answers plain-English questions about the data. Built as project #2 of [Lucas Lima's AI portfolio](https://lucaslima.xyz/ai-portfolio).
+A single-page web app that combines a fixed dashboard of SaaS growth metrics with an agentic chat that answers plain-English questions about the data.
 
 **Live demo:** [growth-analytics-agent.vercel.app](https://growth-analytics-agent.vercel.app/) (synthetic data; not a real company).
 
