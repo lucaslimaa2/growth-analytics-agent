@@ -27,7 +27,7 @@ The agent is a real tool-use loop, not a RAG chatbot. It maintains in-session me
 | Tests | `pytest` (14 tests, CI on every push) | Catches regressions in SQL tool and rollup math. |
 | CI | GitHub Actions | Runs `ruff` + `pytest` on every push and PR. |
 
-Deliberately not used: LangChain, LlamaIndex, agent frameworks, React, TypeScript. The brief was to build the agent loop from the Anthropic SDK directly, so every piece of behavior is visible and tunable.
+Deliberately not used: LangChain, LlamaIndex, agent frameworks, React, TypeScript. The agent loop was built from the Anthropic SDK directly, so every piece of behavior is visible and tunable.
 
 ## Architecture
 
