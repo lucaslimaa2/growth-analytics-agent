@@ -33,45 +33,19 @@ Deliberately not used: LangChain, LlamaIndex, agent frameworks, React, TypeScrip
 
 ```mermaid
 flowchart TD
-    User["User question · natural language"]
+    User["User · natural language"]
 
-    User -->|GET /api/dashboard| Dashboard["Dashboard endpoint<br/>KPIs + charts + events<br/>~50ms, no agent"]
     User -->|POST /api/chat/stream| Agent
+    User -->|GET /api/dashboard| Dashboard
 
     Agent["Agent loop · agent.py<br/>Claude Haiku 4.5<br/>tool-use, capped at 10 iterations"]
 
-    Agent -->|metric lookup| Metrics
-    Agent -->|ad-hoc SQL| GP
-    Agent -->|analysis| Analysis
-    Agent -->|presentation| OutputTools
+    Dashboard["Dashboard endpoint<br/>KPIs · charts · events"]
 
-    subgraph Metrics["Pre-built metric tools"]
-        direction TB
-        M1["get_metric"]
-        M2["cohort_analysis"]
-        M3["funnel_analysis"]
-        M4["time_series_compare"]
-        M5["segment_breakdown"]
-    end
-
-    subgraph GP["General-purpose data tools"]
-        direction TB
-        S1["get_schema"]
-        S2["query_database<br/>read-only role"]
-    end
-
-    subgraph Analysis["Analytical tools"]
-        direction TB
-        A1["anomaly_detection<br/>rolling Z-score"]
-        A2["compare_to_benchmarks<br/>SaaS norms"]
-    end
-
-    subgraph OutputTools["Output tools"]
-        direction TB
-        O1["make_chart · Plotly JSON"]
-        O2["make_table"]
-        O3["summarize_findings"]
-    end
+    Agent -->|metric lookup| Metrics["Metric tools<br/>get_metric · cohort · funnel<br/>time_series · segment_breakdown"]
+    Agent -->|ad-hoc SQL| GP["General-purpose tools<br/>get_schema · query_database<br/>read-only role"]
+    Agent -->|analysis| Analysis["Analytical tools<br/>anomaly_detection<br/>compare_to_benchmarks"]
+    Agent -->|presentation| OutputTools["Output tools<br/>make_chart · make_table<br/>summarize_findings"]
 
     Metrics --> DB
     GP --> DB
@@ -80,7 +54,7 @@ flowchart TD
 
     DB[("Supabase Postgres<br/>~65k rows synthetic SaaS data<br/>agent_ro role: SELECT only")]
 
-    Agent -.->|SSE stream<br/>tool calls + text tokens| Browser["Browser<br/>vanilla HTML/CSS/JS<br/>Plotly.js inline render"]
+    Agent -.->|SSE: tool calls + tokens| Browser["Browser<br/>vanilla HTML/CSS/JS · Plotly.js"]
     OutputTools -.->|JSON spec| Browser
     Dashboard -.->|JSON| Browser
 ```
