@@ -27,6 +27,7 @@ load_dotenv()
 from agent import run_agent, run_agent_streaming  # noqa: E402
 from lib.dashboard import get_dashboard_data  # noqa: E402
 from lib.rate_limit import check_rate_limit  # noqa: E402
+from lib.scope_gate import REFUSAL_TEXT, check_scope  # noqa: E402
 
 app = FastAPI()
 
@@ -128,8 +129,29 @@ def chat(req: ChatRequest, request: Request):
         return rl
 
     history_dicts = [h.model_dump() for h in (req.history or [])]
+
+    # Scope gate: short-circuit before the agent fires.
+    decision = check_scope(q, history=history_dicts)
+    if not decision["result"].in_scope:
+        return {
+            "answer": REFUSAL_TEXT,
+            "outputs": [],
+            "iterations": 0,
+            "stop_reason": "out_of_scope",
+            "cost_usd": decision["telemetry"]["cost_usd"],
+            "tokens": {
+                "input_tokens": decision["telemetry"]["input_tokens"],
+                "output_tokens": decision["telemetry"]["output_tokens"],
+                "cache_write_tokens": 0,
+                "cache_read_tokens": 0,
+            },
+            "refusal_reason": decision["result"].reason,
+        }
+
     try:
         result = run_agent(q, history=history_dicts)
+        # Roll the gate cost into the total so the user sees true total.
+        result["cost_usd"] = round(result["cost_usd"] + decision["telemetry"]["cost_usd"], 6)
         return result
     except Exception as exc:
         return JSONResponse(
@@ -153,9 +175,37 @@ def chat_stream(req: ChatRequest, request: Request):
 
     history_dicts = [h.model_dump() for h in (req.history or [])]
 
+    # Scope gate runs synchronously before we open the SSE stream. If the
+    # gate refuses, we still stream a refusal so the frontend code path
+    # is uniform (text_delta + done), but no agent loop fires.
+    decision = check_scope(q, history=history_dicts)
+
     def sse_generator():
+        if not decision["result"].in_scope:
+            # Stream the refusal as text_delta events + done.
+            yield f"data: {json.dumps({'kind': 'text_delta', 'text': REFUSAL_TEXT})}\n\n"
+            done_event = {
+                "kind": "done",
+                "iterations": 0,
+                "stop_reason": "out_of_scope",
+                "cost_usd": decision["telemetry"]["cost_usd"],
+                "tokens": {
+                    "input_tokens": decision["telemetry"]["input_tokens"],
+                    "output_tokens": decision["telemetry"]["output_tokens"],
+                    "cache_write_tokens": 0,
+                    "cache_read_tokens": 0,
+                },
+            }
+            yield f"data: {json.dumps(done_event)}\n\n"
+            return
+
         try:
             for event in run_agent_streaming(q, history=history_dicts):
+                # Roll the gate cost into the final done event's total.
+                if event.get("kind") == "done" and "cost_usd" in event:
+                    event["cost_usd"] = round(
+                        event["cost_usd"] + decision["telemetry"]["cost_usd"], 6
+                    )
                 yield f"data: {json.dumps(event, default=str, ensure_ascii=False)}\n\n"
         except Exception as exc:
             err = {"kind": "error", "message": f"{type(exc).__name__}: {exc}"}
