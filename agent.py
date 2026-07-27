@@ -733,6 +733,14 @@ def run_agent_streaming(
     for iteration in range(1, MAX_ITERATIONS + 1):
         yield {"kind": "iteration_start", "iteration": iteration}
 
+        # Buffer text_deltas during the stream. Prompt-only instructions
+        # can't reliably stop Haiku from narrating between tool calls
+        # ("Now let me...", "Perfect!", "I have the schema..."), which
+        # then piles up above the final answer and reads as amateur.
+        # We only flush the buffer if this iteration ends with end_turn
+        # (i.e., it's the FINAL iteration with the real answer). Text
+        # from tool_use iterations is discarded entirely.
+        text_buffer: list[str] = []
         with client.messages.stream(
             model=MODEL,
             max_tokens=MAX_TOKENS,
@@ -748,12 +756,17 @@ def run_agent_streaming(
             tools=TOOLS,
             messages=messages,
         ) as stream:
-            # Stream user-facing text tokens as they arrive.
             for event in stream:
                 if event.type == "content_block_delta" and event.delta.type == "text_delta":
-                    yield {"kind": "text_delta", "text": event.delta.text}
+                    text_buffer.append(event.delta.text)
 
             response = stream.get_final_message()
+
+        # Only reveal buffered text if this iteration is the final one.
+        # We emit it as a single text_delta so the frontend's existing
+        # streaming code path renders it without a special case.
+        if response.stop_reason == "end_turn" and text_buffer:
+            yield {"kind": "text_delta", "text": "".join(text_buffer)}
 
         cw = getattr(response.usage, "cache_creation_input_tokens", 0)
         cr = getattr(response.usage, "cache_read_input_tokens", 0)
