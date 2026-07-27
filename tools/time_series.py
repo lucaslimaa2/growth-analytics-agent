@@ -73,6 +73,32 @@ BREAKDOWN_SQL: dict[tuple[str, str], str] = {
           AND (s.ended_at IS NULL OR s.ended_at > (date_trunc('month', to_date(%s, 'YYYY-MM')) + interval '1 month - 1 day')::date)
         GROUP BY s.plan
     """,
+    ("mrr_end", "channel"): """
+        SELECT c.channel AS segment, SUM(s.mrr_usd) AS value
+        FROM subscriptions s
+        JOIN customers c ON c.id = s.customer_id
+        WHERE s.mrr_usd > 0
+          AND s.started_at <= (date_trunc('month', to_date(%s, 'YYYY-MM')) + interval '1 month - 1 day')::date
+          AND (s.ended_at IS NULL OR s.ended_at > (date_trunc('month', to_date(%s, 'YYYY-MM')) + interval '1 month - 1 day')::date)
+        GROUP BY c.channel
+    """,
+    ("mrr_end", "country"): """
+        SELECT c.country AS segment, SUM(s.mrr_usd) AS value
+        FROM subscriptions s
+        JOIN customers c ON c.id = s.customer_id
+        WHERE s.mrr_usd > 0
+          AND s.started_at <= (date_trunc('month', to_date(%s, 'YYYY-MM')) + interval '1 month - 1 day')::date
+          AND (s.ended_at IS NULL OR s.ended_at > (date_trunc('month', to_date(%s, 'YYYY-MM')) + interval '1 month - 1 day')::date)
+        GROUP BY c.country
+    """,
+    ("churn_mrr", "channel"): """
+        SELECT c.channel AS segment, SUM(s.mrr_usd) AS value
+        FROM subscriptions s
+        JOIN customers c ON c.id = s.customer_id
+        WHERE s.end_reason IN ('voluntary', 'involuntary_payment', 'price_increase', 'outage_followup')
+          AND TO_CHAR(s.ended_at, 'YYYY-MM') = %s
+        GROUP BY c.channel
+    """,
     ("new_signups", "channel"): """
         SELECT channel AS segment, COUNT(*) AS value
         FROM customers

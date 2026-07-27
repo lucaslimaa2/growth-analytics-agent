@@ -301,8 +301,17 @@ TOOLS: list[dict[str, Any]] = [
         "name": "segment_breakdown",
         "description": (
             "Split a metric by a dimension for one period. Returns rows of "
-            "{segment, value} sorted descending. Supports the same metric/dimension "
-            "pairs as time_series_compare's breakdown_by."
+            "{segment, value} sorted descending.\n\n"
+            "ONLY these (metric, dimension) pairs are supported — any other combination "
+            "returns an error, so pick from this list on the first try:\n"
+            "  mrr_end     × plan | channel | country\n"
+            "  new_signups × channel | country | initial_plan\n"
+            "  new_activations × channel\n"
+            "  new_paying  × channel\n"
+            "  churn_mrr   × end_reason | plan | channel\n\n"
+            "Note: 'mrr_growth', 'mom_growth', 'ltv', 'cac' etc. are NOT valid metrics "
+            "for this tool. For MRR-by-channel across months, call this once per month "
+            "with (mrr_end, channel), or use time_series_compare."
         ),
         "input_schema": {
             "type": "object",
@@ -319,7 +328,7 @@ TOOLS: list[dict[str, Any]] = [
                 },
                 "dimension": {
                     "type": "string",
-                    "description": "Dimension to split by (plan, channel, country, initial_plan, end_reason).",
+                    "enum": ["plan", "channel", "country", "initial_plan", "end_reason"],
                 },
                 "period": {"type": "string", "description": "YYYY-MM."},
             },
