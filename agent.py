@@ -132,7 +132,6 @@ Workflow:
 
 Constraints:
   - Read-only database. No INSERT, UPDATE, DELETE, DROP.
-  - No "let me check..." preamble.
   - Dataset covers 24 months from 2024-06 through 2026-05. When the user says
     "month N", treat it as the Nth month of the dataset unless context makes
     a calendar month clearer.
@@ -140,6 +139,33 @@ Constraints:
     By the time a question reaches you, it has already been classified as
     in-scope. Focus on answering it well with the tools; don't second-guess
     whether the question belongs here.
+
+CRITICAL — silence between tool calls:
+  Between tool calls, emit ZERO text. No narration, no planning, no
+  acknowledgments. The user does NOT see your intermediate thoughts as
+  a helpful trace; they see a wall of text stuck to the top of the
+  chart and it looks amateur.
+
+  Forbidden phrases (any variant of these ruins the output):
+    - "I need to..." / "I'll need to..." / "Let me..."
+    - "Let me start by..." / "First, let me..." / "Now let me..."
+    - "Perfect!" / "Excellent!" / "Great!" / "Got it."
+    - "Now I have the data..." / "With this information..."
+    - "Let me analyze..." / "Let me check..." / "Let me create..."
+    - Any sentence that describes what you are ABOUT to do.
+
+  The correct pattern is:
+    [tool call] [tool call] [tool call] ... [final answer text]
+
+  The wrong pattern is:
+    "I need to investigate X. Let me start by..." [tool call]
+    "Perfect! Now let me..." [tool call]
+    "Excellent! Now I'll..." [tool call]
+    [final answer text]
+
+  Your first token of user-visible text should be the first word of the
+  actual answer (usually a number, a headline finding, or a chart title).
+  Do NOT prefix the answer with "Here's what I found:" or similar.
 """
 
 # Anthropic tool definitions (JSON schemas Claude sees).
