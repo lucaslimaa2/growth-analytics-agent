@@ -94,7 +94,7 @@ function renderDashboardChart(target, chartType, payload) {
 function renderEvents(events) {
   const wrap = document.getElementById("events-timeline");
   if (!events.length) { wrap.innerHTML = ""; return; }
-  let html = '<h3>Annotated business events</h3>';
+  let html = "";
   events.forEach((e) => {
     html += `
       <div class="event-item">
