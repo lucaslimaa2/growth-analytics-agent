@@ -93,6 +93,7 @@ function renderDashboardChart(target, chartType, payload) {
 
 function renderEvents(events) {
   const wrap = document.getElementById("events-timeline");
+  if (!wrap) return; // events section is commented out in the HTML
   if (!events.length) { wrap.innerHTML = ""; return; }
   let html = "";
   events.forEach((e) => {
@@ -509,7 +510,10 @@ function formatMarkdownish(text) {
 }
 
 function scrollToBottom() {
-  window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  // Scroll inside the chat's history pane (fixed-height, internal scroll)
+  // instead of the whole window, so the page layout stays stable as the
+  // conversation grows.
+  historyEl.scrollTop = historyEl.scrollHeight;
 }
 
 async function safeText(resp) {
